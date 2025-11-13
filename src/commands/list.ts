@@ -110,6 +110,24 @@ export function createListCommand(): Command {
           );
           const metadataList = await Promise.all(metadataPromises);
 
+          // Combine namespaces with their metadata and sort by updated_at (most recent first)
+          const namespacesWithMetadata = namespaces.map((ns, index) => ({
+            namespace: ns,
+            metadata: metadataList[index]
+          }));
+
+          namespacesWithMetadata.sort((a, b) => {
+            // Handle cases where metadata might be null
+            if (!a.metadata && !b.metadata) return 0;
+            if (!a.metadata) return 1; // Put nulls at the end
+            if (!b.metadata) return -1;
+
+            // Sort by updated_at in descending order (most recent first)
+            const dateA = new Date(a.metadata.updated_at).getTime();
+            const dateB = new Date(b.metadata.updated_at).getTime();
+            return dateB - dateA;
+          });
+
           // Create table
           const table = new Table({
             head: [
@@ -117,8 +135,7 @@ export function createListCommand(): Command {
               chalk.cyan('Rows'),
               chalk.cyan('Logical Bytes'),
               chalk.cyan('Index Status'),
-              chalk.cyan('Created At'),
-              chalk.cyan('Updated At')
+              chalk.cyan('Updated')
             ],
             style: {
               head: [],
@@ -127,32 +144,22 @@ export function createListCommand(): Command {
           });
 
           // Add rows to table
-          namespaces.forEach((ns, index) => {
-            const metadata = metadataList[index];
-
-            // Truncate long namespace names
-            const maxNameLength = 50;
-            const truncatedName = ns.id.length > maxNameLength
-              ? ns.id.substring(0, maxNameLength) + '...'
-              : ns.id;
-
+          namespacesWithMetadata.forEach(({ namespace: ns, metadata }) => {
             if (metadata) {
               const indexStatus = metadata.index.status === 'up-to-date'
                 ? chalk.green('up-to-date')
                 : chalk.red(`updating (${formatBytes(metadata.index.status === 'updating' ? (metadata.index as any).unindexed_bytes : 0)} unindexed)`);
 
               table.push([
-                chalk.bold(truncatedName),
+                chalk.bold(ns.id),
                 metadata.approx_row_count.toLocaleString(),
                 formatBytes(metadata.approx_logical_bytes),
                 indexStatus,
-                new Date(metadata.created_at).toLocaleString(),
-                new Date(metadata.updated_at).toLocaleString()
+                formatUpdatedAt(metadata.updated_at)
               ]);
             } else {
               table.push([
-                chalk.bold(truncatedName),
-                chalk.gray('N/A'),
+                chalk.bold(ns.id),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
@@ -178,6 +185,37 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/**
+ * Formats a timestamp smartly: time if today, date otherwise
+ * @param timestamp ISO timestamp string
+ * @returns Formatted string
+ */
+function formatUpdatedAt(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+
+  // Check if the date is today
+  const isToday = date.getDate() === now.getDate() &&
+                  date.getMonth() === now.getMonth() &&
+                  date.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    // Show time only
+    return date.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } else {
+    // Show date only
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
 }
 
 /**
