@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { createListCommand } from './commands/list';
 import { createGetCommand } from './commands/get';
+import { createDeleteCommand } from './commands/delete';
 
 const program = new Command();
 
@@ -14,5 +15,6 @@ program
 // Add commands
 program.addCommand(createListCommand());
 program.addCommand(createGetCommand());
+program.addCommand(createDeleteCommand());
 
 program.parse();
