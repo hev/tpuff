@@ -184,12 +184,11 @@ First pull can take a few minutes as it downloads the image (~2GB). Subsequent s
 ## Future Features
 
 See [claude.md](./claude.md) for planned features including:
-- Full-text search (FTS)
 - Namespace backup and restore
 - Filterable property management
 - Cache warming
 - Recall evaluation
-- And more...
+- Feedback welcome (file an issue)
 
 ## Development
 
