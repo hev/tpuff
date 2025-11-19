@@ -9,18 +9,15 @@ export function getTurbopufferClient(regionOverride?: string): Turbopuffer {
     process.exit(1);
   }
 
-  const baseURL = process.env.TURBOPUFFER_BASE_URL;
   const region = regionOverride || process.env.TURBOPUFFER_REGION || 'aws-us-east-1';
 
   const client = new Turbopuffer({
     apiKey,
     region,
-    ...(baseURL && { baseURL })
   });
 
   debugLog('Turbopuffer Client Configuration', {
     region,
-    baseURL: baseURL || 'default',
     apiKeyPresent: !!apiKey
   });
 

@@ -9,9 +9,8 @@ A TypeScript CLI for interacting with turbopuffer vector database. This tool all
 - Docker (optional, required for Python-only embedding models)
 
 Set the following environment variables:
-- `TURBOPUFFER_API_KEY` (required): Your turbopuffer API key
-- `TURBOPUFFER_REGION` (optional): Region to use (defaults to `aws-us-east-1`)
-- `TURBOPUFFER_BASE_URL` (optional): Custom base URL for a specific region
+- `TURBOPUFFER_API_KEY`: Your turbopuffer API key
+- `TURBOPUFFER_REGION`: Region to use (defaults to `aws-us-east-1`)
 
 ## Installation
 
@@ -60,15 +59,16 @@ Displays a table with:
 
 **List documents in a namespace:**
 ```bash
-tpuff list <namespace>
+tpuff list -n <namespace>
 ```
-(Coming soon)
 
 ### search
 
 Search for documents in a namespace using vector similarity or full-text search.
 
 **Vector similarity search:**
+Xenova models allow for local embedding generation in typescript. 
+
 ```bash
 tpuff search "your query text" -n my-namespace -m Xenova/all-MiniLM-L6-v2
 ```
@@ -78,7 +78,7 @@ tpuff search "your query text" -n my-namespace -m Xenova/all-MiniLM-L6-v2
 tpuff search "your query text" -n my-namespace -m sentence-transformers/all-MiniLM-L6-v2
 ```
 
-The CLI automatically detects Python-only models and uses Docker to run them. On first use, it will build the Docker image and start the container automatically.
+The CLI automatically detects Python-only models and uses Docker to run a container to do embeddings On first use, it will pull the Docker image and start the container automatically.
 
 **Full-text search (BM25):**
 ```bash
@@ -92,22 +92,27 @@ tpuff search "your query text" -n my-namespace --fts content
 - `-d, --distance-metric <metric>`: Distance metric (cosine_distance or euclidean_squared)
 - `-f, --filters <filters>`: Additional filters in JSON format
 - `--fts <field>`: Field name to use for full-text search (BM25)
-- `--python`: Force use of Docker/Python for embedding generation
 - `-r, --region <region>`: Override the region
 
 ### delete
 
 Delete a namespace:
 ```bash
-tpuff delete my-namespace
+tpuff delete -n my-namespace
+```
+
+Delete ALL namespaces (requires confirmation):
+```bash
+tpuff delete --all
 ```
 
 ### edit
 
-Edit namespace configuration:
+Edit a document by ID using vim:
 ```bash
-tpuff edit my-namespace
+tpuff edit <document-id> -n my-namespace
 ```
+This will open the document in vim. Save and quit (`:wq`) to upsert changes, or quit without saving (`:q!`) to cancel.
 
 ## Docker Support for Python Embedding Models
 
