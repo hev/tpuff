@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { getTurbopufferClient } from '../client';
+import { getTurbopufferClient } from '../client.js';
 import chalk from 'chalk';
 
 export function createGetCommand(): Command {
@@ -7,8 +7,9 @@ export function createGetCommand(): Command {
     .description('Get a document by ID from a namespace')
     .argument('<id>', 'Document ID to retrieve')
     .requiredOption('-n, --namespace <name>', 'Namespace to query')
-    .action(async (id: string, options: { namespace: string }) => {
-      const client = getTurbopufferClient();
+    .option('-r, --region <region>', 'Override the region (e.g., aws-us-east-1, gcp-us-central1)')
+    .action(async (id: string, options: { namespace: string; region?: string }) => {
+      const client = getTurbopufferClient(options.region);
       const namespace = options.namespace;
 
       try {

@@ -1,6 +1,7 @@
 import { Turbopuffer } from '@turbopuffer/turbopuffer';
+import { debugLog } from './utils/debug.js';
 
-export function getTurbopufferClient(): Turbopuffer {
+export function getTurbopufferClient(regionOverride?: string): Turbopuffer {
   const apiKey = process.env.TURBOPUFFER_API_KEY;
 
   if (!apiKey) {
@@ -9,11 +10,19 @@ export function getTurbopufferClient(): Turbopuffer {
   }
 
   const baseURL = process.env.TURBOPUFFER_BASE_URL;
-  const region = process.env.TURBOPUFFER_REGION || 'aws-us-east-1';
+  const region = regionOverride || process.env.TURBOPUFFER_REGION || 'aws-us-east-1';
 
-  return new Turbopuffer({
+  const client = new Turbopuffer({
     apiKey,
     region,
     ...(baseURL && { baseURL })
   });
+
+  debugLog('Turbopuffer Client Configuration', {
+    region,
+    baseURL: baseURL || 'default',
+    apiKeyPresent: !!apiKey
+  });
+
+  return client;
 }

@@ -1,7 +1,8 @@
 import { Command } from 'commander';
-import { getTurbopufferClient } from '../client';
+import { getTurbopufferClient } from '../client.js';
 import chalk from 'chalk';
 import * as readline from 'readline';
+import { debugLog } from '../utils/debug.js';
 
 /**
  * Prompts the user for input
@@ -26,8 +27,9 @@ export function createDeleteCommand(): Command {
     .description('Delete namespace(s)')
     .option('-n, --namespace <name>', 'Namespace to delete')
     .option('--all', 'Delete all namespaces')
-    .action(async (options: { namespace?: string; all?: boolean }) => {
-      const client = getTurbopufferClient();
+    .option('-r, --region <region>', 'Override the region (e.g., aws-us-east-1, gcp-us-central1)')
+    .action(async (options: { namespace?: string; all?: boolean; region?: string }) => {
+      const client = getTurbopufferClient(options.region);
 
       try {
         // Validate that exactly one option is provided
@@ -61,7 +63,10 @@ export function createDeleteCommand(): Command {
           // Delete the namespace
           console.log(chalk.gray(`\nDeleting namespace ${namespace}...`));
           const ns = client.namespace(namespace);
+
+          debugLog('Delete Parameters', { namespace });
           await ns.deleteAll({ namespace });
+          debugLog('Delete Response', 'Success');
 
           console.log(chalk.green(`✓ Namespace ${chalk.bold(namespace)} deleted successfully!`));
 
@@ -73,6 +78,7 @@ export function createDeleteCommand(): Command {
 
           // First, list all namespaces
           const page = await client.namespaces();
+          debugLog('Namespaces API Response', page);
           const namespaces = page.namespaces;
 
           if (namespaces.length === 0) {
@@ -105,10 +111,13 @@ export function createDeleteCommand(): Command {
 
           for (const ns of namespaces) {
             try {
+              debugLog(`Deleting namespace`, { namespace: ns.id });
               await client.namespace(ns.id).deleteAll({ namespace: ns.id });
+              debugLog('Delete Response', 'Success');
               console.log(chalk.gray(`  ✓ Deleted: ${ns.id}`));
               successCount++;
             } catch (error) {
+              debugLog('Delete Error', error);
               console.log(chalk.red(`  ✗ Failed to delete: ${ns.id}`));
               console.error(chalk.gray(`    Error: ${error instanceof Error ? error.message : String(error)}`));
               failCount++;

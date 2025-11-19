@@ -1,7 +1,8 @@
 import { Command } from 'commander';
-import { getTurbopufferClient } from '../client';
+import { getTurbopufferClient } from '../client.js';
 import chalk from 'chalk';
 import Table from 'cli-table3';
+import { debugLog } from '../utils/debug.js';
 
 export function createListCommand(): Command {
   const list = new Command('list')
@@ -9,9 +10,10 @@ export function createListCommand(): Command {
     .description('List namespaces or documents in a namespace')
     .option('-n, --namespace <name>', 'Namespace to list documents from')
     .option('-k, --top-k <number>', 'Number of documents to return', '10')
-    .action(async (options?: { namespace?: string; topK: string }) => {
+    .option('-r, --region <region>', 'Override the region (e.g., aws-us-east-1, gcp-us-central1)')
+    .action(async (options?: { namespace?: string; topK: string; region?: string }) => {
       const namespace = options?.namespace;
-      const client = getTurbopufferClient();
+      const client = getTurbopufferClient(options?.region);
 
       try {
         if (namespace) {
@@ -37,12 +39,20 @@ export function createListCommand(): Command {
           // Create zero vector
           const zeroVector = new Array(vectorInfo.dimensions).fill(0);
 
-          // Query the namespace
-          const result = await ns.query({
-            rank_by: [vectorInfo.attributeName, 'ANN', zeroVector],
+          const queryParams = {
+            rank_by: [vectorInfo.attributeName, 'ANN', zeroVector] as any,
             top_k: topK,
-            include_attributes: true
-          });
+            exclude_attributes: [vectorInfo.attributeName]
+          };
+
+          // Debug: Log query parameters
+          debugLog('Query Parameters', queryParams);
+
+          // Query the namespace
+          const result = await ns.query(queryParams);
+
+          // Debug: Log API response
+          debugLog('Query Response', result);
 
           if (!result.rows || result.rows.length === 0) {
             console.log('No documents found in namespace');
@@ -54,7 +64,7 @@ export function createListCommand(): Command {
           // Create table for results
           const rows = result.rows;
 
-          const headers = ['ID', 'Contents', 'Distance'];
+          const headers = ['ID', 'Contents'];
           const table = new Table({
             head: headers.map(h => chalk.cyan(h)),
             style: {
@@ -83,8 +93,7 @@ export function createListCommand(): Command {
 
             const rowData: any[] = [
               row.id,
-              displayContents,
-              row.$dist !== undefined ? row.$dist.toFixed(4) : chalk.gray('N/A')
+              displayContents
             ];
 
             table.push(rowData);
@@ -95,6 +104,10 @@ export function createListCommand(): Command {
         } else {
           // List all namespaces
           const page = await client.namespaces();
+
+          // Debug: Log API response
+          debugLog('Namespaces API Response', page);
+
           const namespaces = page.namespaces;
 
           if (namespaces.length === 0) {
