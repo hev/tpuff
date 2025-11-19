@@ -6,7 +6,8 @@ import { execSync, spawn } from 'child_process';
 import chalk from 'chalk';
 
 const CONTAINER_NAME = 'tpuff-embeddings';
-const IMAGE_NAME = 'tpuff-embeddings';
+const IMAGE_VERSION = '0.1.0';
+const IMAGE_NAME = `hevmind/tpuff-embeddings:${IMAGE_VERSION}`;
 const CONTAINER_PORT = 5050;
 const HOST_PORT = 5050;
 
@@ -52,7 +53,7 @@ export function isContainerRunning(): boolean {
 /**
  * Check if the container image exists locally
  */
-export function isImageBuilt(): boolean {
+export function isImageAvailable(): boolean {
   try {
     const result = execSync(
       `docker images -q ${IMAGE_NAME}`,
@@ -65,20 +66,19 @@ export function isImageBuilt(): boolean {
 }
 
 /**
- * Build the Docker image
+ * Pull the Docker image from Docker Hub
  */
-export async function buildImage(): Promise<void> {
-  console.log(chalk.blue('Building tpuff-embeddings Docker image...'));
-  console.log(chalk.gray('This may take a few minutes on first run.'));
+export async function pullImage(): Promise<void> {
+  console.log(chalk.blue('Pulling tpuff-embeddings Docker image...'));
+  console.log(chalk.gray('This may take a minute on first run.'));
 
   try {
-    execSync(`docker build -t ${IMAGE_NAME} docker/`, {
-      stdio: 'inherit',
-      cwd: process.cwd()
+    execSync(`docker pull ${IMAGE_NAME}`, {
+      stdio: 'inherit'
     });
-    console.log(chalk.green('Image built successfully!'));
+    console.log(chalk.green('Image pulled successfully!'));
   } catch (error) {
-    throw new Error(`Failed to build Docker image: ${error}`);
+    throw new Error(`Failed to pull Docker image: ${error}`);
   }
 }
 
@@ -154,9 +154,9 @@ export async function ensureContainerRunning(): Promise<void> {
     return;
   }
 
-  // Check if image is built
-  if (!isImageBuilt()) {
-    await buildImage();
+  // Check if image is available locally
+  if (!isImageAvailable()) {
+    await pullImage();
   }
 
   // Start the container
@@ -227,12 +227,12 @@ export function getContainerStatus(): {
   dockerAvailable: boolean;
   dockerRunning: boolean;
   containerRunning: boolean;
-  imageBuilt: boolean;
+  imageAvailable: boolean;
 } {
   return {
     dockerAvailable: isDockerAvailable(),
     dockerRunning: isDockerRunning(),
     containerRunning: isContainerRunning(),
-    imageBuilt: isImageBuilt(),
+    imageAvailable: isImageAvailable(),
   };
 }

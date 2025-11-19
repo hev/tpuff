@@ -15,27 +15,28 @@ Set the following environment variables:
 
 ## Installation
 
+Install globally via npm:
+
 ```bash
+npm install -g tpuff-cli
+```
+
+Then use the `tpuff` command directly:
+
+```bash
+tpuff [command] [options]
+```
+
+### Development Installation
+
+If you want to contribute or run from source:
+
+```bash
+git clone https://github.com/hev/tpuff.git
+cd tpuff
 npm install
 npm run build
-```
-
-## Usage
-
-### Development Mode
-```bash
-npm run dev -- [command] [options]
-```
-
-### Production Mode
-```bash
-npm start [command] [options]
-```
-
-Or after building, link it globally:
-```bash
 npm link
-tpuff [command] [options]
 ```
 
 ## Commands
@@ -116,13 +117,15 @@ The CLI supports Python-only embedding models (like `sentence-transformers/*`, `
 
 1. When you use a Python-only model, the CLI automatically:
    - Checks if Docker is available
-   - Builds the embedding service container (first time only)
+   - Pulls the embedding service container from Docker Hub (first time only)
    - Starts the container if not running
    - Generates embeddings via the container API
 
 2. The container stays running between searches for better performance
 
-3. Supported Python model prefixes:
+3. The pre-built image is available at `hevmind/tpuff-embeddings:0.1.0` (also tagged as `latest`)
+
+4. Supported Python model prefixes:
    - `sentence-transformers/`
    - `intfloat/`
    - `BAAI/`
@@ -130,9 +133,9 @@ The CLI supports Python-only embedding models (like `sentence-transformers/*`, `
 
 ### Manual Docker Management
 
-**Build the container:**
+**Pull the container (optional, happens automatically):**
 ```bash
-npm run docker:build
+docker pull hevmind/tpuff-embeddings:0.1.0
 ```
 
 **Start the container:**
@@ -170,8 +173,8 @@ Error: Docker daemon is not running. Please start Docker and try again.
 ```
 → Start Docker Desktop
 
-**Container build takes too long:**
-First build can take 5-10 minutes as it downloads Python dependencies. Subsequent builds are much faster thanks to Docker layer caching.
+**Container pull takes too long:**
+First pull can take a few minutes as it downloads the image (~2GB). Subsequent starts are instant since the image is cached locally.
 
 ## Future Features
 

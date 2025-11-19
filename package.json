@@ -1,18 +1,25 @@
 {
-  "name": "tpuff",
+  "name": "tpuff-cli",
   "version": "0.1.0",
-  "description": "A TypeScript CLI for interacting with turbopuffer",
+  "description": "A TypeScript CLI for interacting with turbopuffer vector database",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "tpuff": "./dist/index.js",
     "tpuf": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "docker:build": "docker build -t tpuff-embeddings docker/",
+    "prepublishOnly": "npm run build",
+    "release": "./scripts/release.sh",
+    "docker:build": "docker build -t tpuff-embeddings:0.1.0 docker/ && docker tag tpuff-embeddings:0.1.0 tpuff-embeddings:latest",
     "docker:start": "docker run -d --name tpuff-embeddings -p 5050:5050 tpuff-embeddings",
     "docker:stop": "docker stop tpuff-embeddings && docker rm tpuff-embeddings",
     "docker:logs": "docker logs -f tpuff-embeddings",
@@ -21,10 +28,21 @@
   "keywords": [
     "turbopuffer",
     "cli",
-    "vector-database"
+    "vector-database",
+    "vector-search",
+    "embeddings",
+    "typescript"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hev/tpuff.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hev/tpuff/issues"
+  },
+  "homepage": "https://github.com/hev/tpuff#readme",
   "dependencies": {
     "@turbopuffer/turbopuffer": "^1.0.0",
     "@xenova/transformers": "^2.17.0",
