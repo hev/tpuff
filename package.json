@@ -11,7 +11,12 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "docker:build": "docker build -t tpuff-embeddings docker/",
+    "docker:start": "docker run -d --name tpuff-embeddings -p 5050:5050 tpuff-embeddings",
+    "docker:stop": "docker stop tpuff-embeddings && docker rm tpuff-embeddings",
+    "docker:logs": "docker logs -f tpuff-embeddings",
+    "docker:shell": "docker exec -it tpuff-embeddings /bin/bash"
   },
   "keywords": [
     "turbopuffer",

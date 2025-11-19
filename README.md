@@ -6,6 +6,7 @@ A TypeScript CLI for interacting with turbopuffer vector database. This tool all
 
 - Node.js 20+
 - A turbopuffer API key
+- Docker (optional, required for Python-only embedding models)
 
 Set the following environment variables:
 - `TURBOPUFFER_API_KEY` (required): Your turbopuffer API key
@@ -61,6 +62,116 @@ Displays a table with:
 tpuff list <namespace>
 ```
 (Coming soon)
+
+### search
+
+Search for documents in a namespace using vector similarity or full-text search.
+
+**Vector similarity search:**
+```bash
+tpuff search "your query text" -n my-namespace -m Xenova/all-MiniLM-L6-v2
+```
+
+**Using Python-only models (automatic Docker support):**
+```bash
+tpuff search "your query text" -n my-namespace -m sentence-transformers/all-MiniLM-L6-v2
+```
+
+The CLI automatically detects Python-only models and uses Docker to run them. On first use, it will build the Docker image and start the container automatically.
+
+**Full-text search (BM25):**
+```bash
+tpuff search "your query text" -n my-namespace --fts content
+```
+
+**Options:**
+- `-n, --namespace <name>`: Namespace to search in (required)
+- `-m, --model <id>`: HuggingFace model ID for vector search
+- `-k, --top-k <number>`: Number of results to return (default: 10)
+- `-d, --distance-metric <metric>`: Distance metric (cosine_distance or euclidean_squared)
+- `-f, --filters <filters>`: Additional filters in JSON format
+- `--fts <field>`: Field name to use for full-text search (BM25)
+- `--python`: Force use of Docker/Python for embedding generation
+- `-r, --region <region>`: Override the region
+
+### delete
+
+Delete a namespace:
+```bash
+tpuff delete my-namespace
+```
+
+### edit
+
+Edit namespace configuration:
+```bash
+tpuff edit my-namespace
+```
+
+## Docker Support for Python Embedding Models
+
+The CLI supports Python-only embedding models (like `sentence-transformers/*`, `intfloat/*`, etc.) through an automatic Docker integration.
+
+### How it works
+
+1. When you use a Python-only model, the CLI automatically:
+   - Checks if Docker is available
+   - Builds the embedding service container (first time only)
+   - Starts the container if not running
+   - Generates embeddings via the container API
+
+2. The container stays running between searches for better performance
+
+3. Supported Python model prefixes:
+   - `sentence-transformers/`
+   - `intfloat/`
+   - `BAAI/`
+   - `thenlper/`
+
+### Manual Docker Management
+
+**Build the container:**
+```bash
+npm run docker:build
+```
+
+**Start the container:**
+```bash
+npm run docker:start
+```
+
+**Stop the container:**
+```bash
+npm run docker:stop
+```
+
+**View container logs:**
+```bash
+npm run docker:logs
+```
+
+**Access container shell:**
+```bash
+npm run docker:shell
+```
+
+### Troubleshooting
+
+**Docker not available:**
+```
+Error: Docker is not available. Please install Docker to use Python-only embedding models.
+Visit: https://docs.docker.com/get-docker/
+```
+→ Install Docker Desktop for your platform
+
+**Docker daemon not running:**
+```
+Error: Docker daemon is not running. Please start Docker and try again.
+```
+→ Start Docker Desktop
+
+**Container build takes too long:**
+First build can take 5-10 minutes as it downloads Python dependencies. Subsequent builds are much faster thanks to Docker layer caching.
 
 ## Future Features
 

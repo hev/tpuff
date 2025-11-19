@@ -13,6 +13,7 @@ interface SearchOptions {
   filters?: string;
   region?: string;
   fts?: string;
+  python?: boolean;
 }
 
 export function createSearchCommand(): Command {
@@ -25,6 +26,7 @@ export function createSearchCommand(): Command {
     .option('-d, --distance-metric <metric>', 'Distance metric for vector search (cosine_distance or euclidean_squared)', 'cosine_distance')
     .option('-f, --filters <filters>', 'Additional filters in JSON format')
     .option('--fts <field>', 'Field name to use for full-text search (BM25)')
+    .option('--python', 'Force use of Docker/Python for embedding generation')
     .option('-r, --region <region>', 'Override the region (e.g., aws-us-east-1, gcp-us-central1)')
     .action(async (query: string, options: SearchOptions) => {
       const client = getTurbopufferClient(options.region);
@@ -74,7 +76,7 @@ export function createSearchCommand(): Command {
           // Step 1: Generate embedding for query
           let embedding: number[];
           try {
-            embedding = await embeddingGenerator.generateEmbedding(query, modelId);
+            embedding = await embeddingGenerator.generateEmbedding(query, modelId, options.python);
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
 
