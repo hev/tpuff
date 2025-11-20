@@ -24,7 +24,8 @@ export function createEditCommand(): Command {
 
         const queryParams = {
           filters: ['id', 'Eq', id] as any,
-          top_k: 1
+          top_k: 1,
+          include_attributes: true
         };
 
         // Debug: Log query parameters
@@ -96,8 +97,7 @@ export function createEditCommand(): Command {
         console.log(chalk.cyan('\nUpserting document...'));
 
         const upsertParams = {
-          upsert_rows: [editedDoc],
-          distance_metric: 'cosine_distance' as any
+          upsert_rows: [editedDoc]
         };
 
         debugLog('Upsert Parameters', upsertParams);
