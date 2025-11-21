@@ -1,6 +1,6 @@
 # Turbopuffer CLI (tpuff)
 
-A TypeScript CLI for interacting with turbopuffer vector database. This tool allows you to list and filter namespaces, browse namespace data, perform full-text search, and execute admin functions.
+A TypeScript CLI for interacting with turbopuffer. This tool allows you to list and filter namespaces, browse namespace data, perform full-text search, and execute admin functions.
 
 ## Prerequisites
 
