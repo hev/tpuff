@@ -118,9 +118,17 @@ export function createListCommand(): Command {
           console.log(chalk.bold(`\nFound ${namespaces.length} namespace(s):\n`));
 
           // Fetch metadata for each namespace
-          const metadataPromises = namespaces.map(ns =>
-            client.namespace(ns.id).metadata().catch(() => null)
-          );
+          const metadataPromises = namespaces.map(async ns => {
+            debugLog(`Fetching metadata for namespace: ${ns.id}`, {});
+            try {
+              const metadata = await client.namespace(ns.id).metadata();
+              debugLog(`Metadata for ${ns.id}`, metadata);
+              return metadata;
+            } catch (error) {
+              debugLog(`Failed to fetch metadata for ${ns.id}`, error);
+              return null;
+            }
+          });
           const metadataList = await Promise.all(metadataPromises);
 
           // Combine namespaces with their metadata and sort by updated_at (most recent first)
@@ -148,6 +156,7 @@ export function createListCommand(): Command {
               chalk.cyan('Rows'),
               chalk.cyan('Logical Bytes'),
               chalk.cyan('Index Status'),
+              chalk.cyan('Unindexed Bytes'),
               chalk.cyan('Updated')
             ],
             style: {
@@ -159,20 +168,26 @@ export function createListCommand(): Command {
           // Add rows to table
           namespacesWithMetadata.forEach(({ namespace: ns, metadata }) => {
             if (metadata) {
-              const indexStatus = metadata.index.status === 'up-to-date'
+              const indexInfo = extractIndexInfo(metadata.index);
+              const indexStatus = indexInfo.status === 'up-to-date'
                 ? chalk.green('up-to-date')
-                : chalk.red(`updating (${formatBytes(metadata.index.status === 'updating' ? (metadata.index as any).unindexed_bytes : 0)} unindexed)`);
+                : chalk.red('updating');
+              const unindexedBytes = indexInfo.unindexedBytes > 0
+                ? chalk.red(formatBytes(indexInfo.unindexedBytes))
+                : formatBytes(0);
 
               table.push([
                 chalk.bold(ns.id),
                 metadata.approx_row_count.toLocaleString(),
                 formatBytes(metadata.approx_logical_bytes),
                 indexStatus,
+                unindexedBytes,
                 formatUpdatedAt(metadata.updated_at)
               ]);
             } else {
               table.push([
                 chalk.bold(ns.id),
+                chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
@@ -253,4 +268,23 @@ function extractVectorInfo(schema: { [key: string]: any }): { attributeName: str
   }
 
   return null;
+}
+
+/**
+ * Extracts index status and unindexed bytes from namespace metadata
+ * @param index The index metadata from namespace
+ * @returns Object with status and unindexedBytes
+ */
+function extractIndexInfo(index: any): { status: string; unindexedBytes: number } {
+  if (index.status === 'up-to-date') {
+    return {
+      status: 'up-to-date',
+      unindexedBytes: 0
+    };
+  } else {
+    return {
+      status: 'updating',
+      unindexedBytes: index.unindexed_bytes
+    };
+  }
 }
