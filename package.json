@@ -23,7 +23,13 @@
     "docker:start": "docker run -d --name tpuff-embeddings -p 5050:5050 tpuff-embeddings",
     "docker:stop": "docker stop tpuff-embeddings && docker rm tpuff-embeddings",
     "docker:logs": "docker logs -f tpuff-embeddings",
-    "docker:shell": "docker exec -it tpuff-embeddings /bin/bash"
+    "docker:shell": "docker exec -it tpuff-embeddings /bin/bash",
+    "docker:exporter:build": "docker build -f Dockerfile.exporter -t tpuff-exporter:0.1.0 . && docker tag tpuff-exporter:0.1.0 tpuff-exporter:latest",
+    "docker:exporter:start": "docker run -d --name tpuff-exporter -p 9876:9876 -e TURBOPUFFER_API_KEY tpuff-exporter",
+    "docker:exporter:stop": "docker stop tpuff-exporter && docker rm tpuff-exporter",
+    "docker:exporter:logs": "docker logs -f tpuff-exporter",
+    "docker:exporter:shell": "docker exec -it tpuff-exporter /bin/sh",
+    "docker:exporter:publish": "docker tag tpuff-exporter:0.1.0 hevmind/tpuff-exporter:0.1.0 && docker tag tpuff-exporter:0.1.0 hevmind/tpuff-exporter:latest && docker push hevmind/tpuff-exporter:0.1.0 && docker push hevmind/tpuff-exporter:latest"
   },
   "keywords": [
     "turbopuffer",

@@ -1,0 +1,42 @@
+# Node modules
+node_modules/
+
+# Build output
+dist/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Docker
+docker/
+Dockerfile
+Dockerfile.exporter
+.dockerignore
+
+# CI/CD
+.github/
+
+# Documentation
+*.md
+!README.md
+
+# Scripts
+scripts/
+
+# Tests
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
+.env
+.env.*

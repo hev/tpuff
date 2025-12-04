@@ -5,6 +5,7 @@ import { createListCommand } from './commands/list.js';
 import { createEditCommand } from './commands/edit.js';
 import { createDeleteCommand } from './commands/delete.js';
 import { createSearchCommand } from './commands/search.js';
+import { createExportCommand } from './commands/export.js';
 import { enableDebug } from './utils/debug.js';
 
 const program = new Command();
@@ -26,5 +27,6 @@ program.addCommand(createListCommand());
 program.addCommand(createEditCommand());
 program.addCommand(createDeleteCommand());
 program.addCommand(createSearchCommand());
+program.addCommand(createExportCommand());
 
 program.parse();
