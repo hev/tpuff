@@ -19,7 +19,8 @@ NC='\033[0m' # No Color
 # Get version from package.json
 VERSION=$(node -p "require('./package.json').version")
 DOCKER_USERNAME="hevmind"
-IMAGE_NAME="tpuff-embeddings"
+EMBEDDINGS_IMAGE="tpuff-embeddings"
+EXPORTER_IMAGE="tpuff-exporter"
 
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  tpuff-cli Release Script v${VERSION}${NC}"
@@ -69,7 +70,9 @@ echo -e "${YELLOW}You are about to release version ${VERSION}${NC}"
 echo "This will:"
 echo "  1. Build the npm package"
 echo "  2. Publish tpuff-cli@${VERSION} to npm"
-echo "  3. Build and push Docker image ${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}"
+echo "  3. Build and push Docker images:"
+echo "     - ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:${VERSION}"
+echo "     - ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:${VERSION}"
 echo "  4. Create and push git tag v${VERSION}"
 echo "  5. Create GitHub release"
 echo
@@ -99,20 +102,36 @@ npm publish --access public
 echo -e "${GREEN}✓ Published to npm${NC}"
 echo
 
-# Step 4: Build Docker image
-echo -e "${BLUE}Step 4: Building Docker image...${NC}"
-docker build -t ${IMAGE_NAME}:${VERSION} docker/
-docker tag ${IMAGE_NAME}:${VERSION} ${IMAGE_NAME}:latest
-docker tag ${IMAGE_NAME}:${VERSION} ${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}
-docker tag ${IMAGE_NAME}:${VERSION} ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
-echo -e "${GREEN}✓ Docker image built${NC}"
+# Step 4: Build Docker images
+echo -e "${BLUE}Step 4: Building Docker images...${NC}"
+
+echo "Building embeddings image..."
+docker build -t ${EMBEDDINGS_IMAGE}:${VERSION} docker/
+docker tag ${EMBEDDINGS_IMAGE}:${VERSION} ${EMBEDDINGS_IMAGE}:latest
+docker tag ${EMBEDDINGS_IMAGE}:${VERSION} ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:${VERSION}
+docker tag ${EMBEDDINGS_IMAGE}:${VERSION} ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:latest
+echo -e "${GREEN}✓ Embeddings image built${NC}"
+
+echo "Building exporter image..."
+docker build -f Dockerfile.exporter -t ${EXPORTER_IMAGE}:${VERSION} .
+docker tag ${EXPORTER_IMAGE}:${VERSION} ${EXPORTER_IMAGE}:latest
+docker tag ${EXPORTER_IMAGE}:${VERSION} ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:${VERSION}
+docker tag ${EXPORTER_IMAGE}:${VERSION} ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:latest
+echo -e "${GREEN}✓ Exporter image built${NC}"
 echo
 
-# Step 5: Push Docker image
-echo -e "${BLUE}Step 5: Pushing Docker image to Docker Hub...${NC}"
-docker push ${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}
-docker push ${DOCKER_USERNAME}/${IMAGE_NAME}:latest
-echo -e "${GREEN}✓ Docker image pushed${NC}"
+# Step 5: Push Docker images
+echo -e "${BLUE}Step 5: Pushing Docker images to Docker Hub...${NC}"
+
+echo "Pushing embeddings image..."
+docker push ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:${VERSION}
+docker push ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:latest
+echo -e "${GREEN}✓ Embeddings image pushed${NC}"
+
+echo "Pushing exporter image..."
+docker push ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:${VERSION}
+docker push ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:latest
+echo -e "${GREEN}✓ Exporter image pushed${NC}"
 echo
 
 # Step 6: Create and push git tag
@@ -149,10 +168,14 @@ gh release create "v${VERSION}" \
 npm install -g tpuff-cli
 \`\`\`
 
-## Docker Image
+## Docker Images
 
 \`\`\`bash
-docker pull ${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}
+# Embeddings service
+docker pull ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:${VERSION}
+
+# Prometheus exporter
+docker pull ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:${VERSION}
 \`\`\`"
 
 echo -e "${GREEN}✓ GitHub release created${NC}"
@@ -165,10 +188,13 @@ echo -e "${GREEN}======================================${NC}"
 echo
 echo "Released version: ${VERSION}"
 echo "npm package: https://www.npmjs.com/package/tpuff-cli"
-echo "Docker image: https://hub.docker.com/r/${DOCKER_USERNAME}/${IMAGE_NAME}"
+echo "Docker images:"
+echo "  - https://hub.docker.com/r/${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}"
+echo "  - https://hub.docker.com/r/${DOCKER_USERNAME}/${EXPORTER_IMAGE}"
 echo "GitHub release: https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/v${VERSION}"
 echo
 echo -e "${BLUE}Verify the release:${NC}"
 echo "  npm view tpuff-cli"
-echo "  docker pull ${DOCKER_USERNAME}/${IMAGE_NAME}:${VERSION}"
+echo "  docker pull ${DOCKER_USERNAME}/${EMBEDDINGS_IMAGE}:${VERSION}"
+echo "  docker pull ${DOCKER_USERNAME}/${EXPORTER_IMAGE}:${VERSION}"
 echo
