@@ -335,8 +335,8 @@
           "refId": "A"
         }
       ],
-      "title": "Namespaces Requiring Attention",
-      "description": "Number of namespaces with >2GB unindexed data requiring attention",
+      "title": "Inconsistent Namespaces",
+      "description": "Number of namespaces with >2GB unindexed data causing inconsistent queries",
       "type": "stat"
     },
     {
@@ -609,13 +609,13 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "turbopuffer_namespace_rows{region=~\"$region\", namespace=~\"$namespace\"}",
-          "legendFormat": "{{namespace}} ({{region}})",
+          "expr": "sum(turbopuffer_namespace_rows{region=~\"$region\", namespace=~\"$namespace\"})",
+          "legendFormat": "Total Rows",
           "refId": "A"
         }
       ],
-      "title": "Namespace Row Count Over Time",
-      "description": "Row count trend for each namespace over time",
+      "title": "Namespace Row Count",
+      "description": "Total row count trend across all selected namespaces. Use variables to filter to specific namespaces.",
       "type": "timeseries"
     },
     {
@@ -698,13 +698,13 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "turbopuffer_namespace_logical_bytes{region=~\"$region\", namespace=~\"$namespace\"}",
-          "legendFormat": "{{namespace}} ({{region}})",
+          "expr": "sum(turbopuffer_namespace_logical_bytes{region=~\"$region\", namespace=~\"$namespace\"})",
+          "legendFormat": "Total Storage",
           "refId": "A"
         }
       ],
-      "title": "Storage Size Over Time",
-      "description": "Logical storage size trend showing growth patterns",
+      "title": "Storage Size",
+      "description": "Total logical storage trend showing growth patterns. Use variables to filter to specific namespaces.",
       "type": "timeseries"
     },
     {
@@ -767,7 +767,7 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
         "y": 16
       },
@@ -791,13 +791,13 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "turbopuffer_namespace_unindexed_bytes{region=~\"$region\", namespace=~\"$namespace\"}",
-          "legendFormat": "{{namespace}} ({{region}})",
+          "expr": "sum(turbopuffer_namespace_unindexed_bytes{region=~\"$region\", namespace=~\"$namespace\"})",
+          "legendFormat": "Total Unindexed",
           "refId": "A"
         }
       ],
-      "title": "Unindexed Bytes Over Time",
-      "description": "Unindexed data trend. Spikes indicate indexing lag. **Yellow threshold at 2GB.**",
+      "title": "Unindexed Bytes",
+      "description": "Total unindexed data trend. Spikes indicate indexing lag. **Yellow threshold at 2GB.** Use variables to filter to specific namespaces.",
       "type": "timeseries"
     },
     {
@@ -979,10 +979,10 @@
         ]
       },
       "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 24
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
       },
       "id": 12,
       "options": {
@@ -992,7 +992,8 @@
           "show": false,
           "reducer": ["sum"],
           "fields": "",
-          "enablePagination": false
+          "enablePagination": true,
+          "countRows": false
         },
         "sortBy": [
           {
@@ -1001,6 +1002,7 @@
           }
         ]
       },
+      "maxDataPoints": 10,
       "pluginVersion": "10.0.0",
       "targets": [
         {
@@ -1032,20 +1034,10 @@
           "instant": true,
           "format": "table",
           "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "turbopuffer_namespace_info{region=~\"$region\", namespace=~\"$namespace\"}",
-          "instant": true,
-          "format": "table",
-          "refId": "D"
         }
       ],
-      "title": "Namespace Details Table",
-      "description": "Detailed view of each namespace. Sort by unindexed_bytes to identify namespaces requiring attention.",
+      "title": "Top 10 Most Recently Updated",
+      "description": "Top 10 namespaces by most recent activity. Sort by unindexed_bytes to identify namespaces requiring attention.",
       "type": "table",
       "transformations": [
         {
@@ -1057,13 +1049,19 @@
           "options": {
             "excludeByName": {
               "__name__": true,
-              "Value #D": true,
               "job": true,
               "instance": true,
-              "updated_at": true
+              "updated_at": true,
+              "service": true
             },
             "indexByName": {},
             "renameByName": {}
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 10
           }
         }
       ]
@@ -1093,7 +1091,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 36
+        "y": 24
       },
       "id": 13,
       "options": {
@@ -1152,7 +1150,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 36
+        "y": 24
       },
       "id": 14,
       "options": {
@@ -1210,21 +1208,22 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 36
+        "y": 24
       },
       "id": 15,
       "options": {
         "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
+          "displayMode": "table",
+          "placement": "right",
           "showLegend": true,
-          "values": ["percent"]
+          "values": ["percent", "value"]
         },
         "pieType": "pie",
         "tooltip": {
           "mode": "single",
           "sort": "none"
-        }
+        },
+        "displayLabels": ["percent"]
       },
       "pluginVersion": "10.0.0",
       "targets": [
@@ -1233,14 +1232,14 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "count by (encryption) (turbopuffer_namespace_rows{region=~\"$region\", namespace=~\"$namespace\"})",
+          "expr": "topk(10, sum by (namespace) (turbopuffer_namespace_logical_bytes{region=~\"$region\", namespace=~\"$namespace\"}))",
           "instant": true,
-          "legendFormat": "{{encryption}}",
+          "legendFormat": "{{namespace}}",
           "refId": "A"
         }
       ],
-      "title": "Encryption Distribution",
-      "description": "Distribution of SSE vs CMEK encryption across namespaces",
+      "title": "Storage by Namespace (Top 10)",
+      "description": "Top 10 namespaces by storage size",
       "type": "piechart"
     },
     {
@@ -1253,7 +1252,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 32
       },
       "id": 100,
       "panels": [
@@ -1315,7 +1314,7 @@
             "h": 6,
             "w": 12,
             "x": 0,
-            "y": 45
+            "y": 33
           },
           "id": 16,
           "options": {
@@ -1381,7 +1380,7 @@
             "h": 6,
             "w": 12,
             "x": 12,
-            "y": 45
+            "y": 33
           },
           "id": 17,
           "options": {
