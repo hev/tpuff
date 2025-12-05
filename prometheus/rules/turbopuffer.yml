@@ -1,0 +1,184 @@
+groups:
+  - name: turbopuffer_namespace_alerts
+    interval: 60s
+    rules:
+      # Warning: Namespace has >2GB unindexed data
+      - alert: TurbopufferHighUnindexedBytes
+        expr: turbopuffer_namespace_unindexed_bytes > 2147483648
+        for: 5m
+        labels:
+          severity: warning
+          service: turbopuffer
+          component: namespace
+        annotations:
+          summary: "Namespace {{ $labels.namespace }} has high unindexed bytes"
+          description: |
+            Namespace {{ $labels.namespace }} in region {{ $labels.region }} has {{ $value | humanize1024 }}B of unindexed data.
+
+            This exceeds the 2GB threshold and may cause inconsistent query results.
+
+            Current status: {{ $labels.index_status }}
+            Encryption: {{ $labels.encryption }}
+
+            Action required: Monitor indexing progress or investigate if data ingestion rate is too high.
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview?var-namespace={{ $labels.namespace }}&var-region={{ $labels.region }}"
+          runbook_url: "https://github.com/hev/tpuff/blob/main/docs/runbooks/high-unindexed-bytes.md"
+
+      # Critical: Namespace has >5GB unindexed data
+      - alert: TurbopufferCriticalUnindexedBytes
+        expr: turbopuffer_namespace_unindexed_bytes > 5368709120
+        for: 10m
+        labels:
+          severity: critical
+          service: turbopuffer
+          component: namespace
+        annotations:
+          summary: "Namespace {{ $labels.namespace }} has critically high unindexed bytes"
+          description: |
+            CRITICAL: Namespace {{ $labels.namespace }} in region {{ $labels.region }} has {{ $value | humanize1024 }}B of unindexed data.
+
+            This is above the 5GB critical threshold and WILL cause inconsistent query results.
+
+            Current status: {{ $labels.index_status }}
+            Encryption: {{ $labels.encryption }}
+
+            IMMEDIATE ACTION REQUIRED:
+            - Check if indexing is stuck or failing
+            - Verify data ingestion rate is within expected bounds
+            - Consider pausing writes if possible until indexing catches up
+            - Contact Turbopuffer support if issue persists
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview?var-namespace={{ $labels.namespace }}&var-region={{ $labels.region }}"
+          runbook_url: "https://github.com/hev/tpuff/blob/main/docs/runbooks/high-unindexed-bytes.md"
+
+      # Warning: Index has been updating for too long
+      - alert: TurbopufferIndexingStuck
+        expr: turbopuffer_namespace_unindexed_bytes > 1073741824 and turbopuffer_namespace_info{index_status="updating"} == 1
+        for: 30m
+        labels:
+          severity: warning
+          service: turbopuffer
+          component: namespace
+        annotations:
+          summary: "Namespace {{ $labels.namespace }} indexing may be stuck"
+          description: |
+            Namespace {{ $labels.namespace }} in region {{ $labels.region }} has been in 'updating' status for >30 minutes with {{ $value | humanize1024 }}B unindexed.
+
+            This may indicate slow indexing or a stuck indexing process.
+
+            Action required: Monitor progress. If unindexed bytes aren't decreasing, contact Turbopuffer support.
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview?var-namespace={{ $labels.namespace }}&var-region={{ $labels.region }}"
+
+  - name: turbopuffer_health_alerts
+    interval: 60s
+    rules:
+      # Warning: Low index health across infrastructure
+      - alert: TurbopufferLowIndexHealth
+        expr: (count(turbopuffer_namespace_rows{index_status="up-to-date"}) / count(turbopuffer_namespace_rows)) * 100 < 95
+        for: 15m
+        labels:
+          severity: warning
+          service: turbopuffer
+          component: infrastructure
+        annotations:
+          summary: "Turbopuffer index health is below 95%"
+          description: |
+            Only {{ $value | printf "%.1f" }}% of namespaces have up-to-date indexes (target: >95%).
+
+            This indicates widespread indexing lag across your Turbopuffer infrastructure.
+
+            Action required:
+            - Review individual namespaces in the Grafana dashboard
+            - Check for common issues (high write volume, resource constraints)
+            - Monitor the "Namespaces Requiring Attention" panel
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview"
+
+      # Critical: Multiple namespaces require attention
+      - alert: TurbopufferMultipleNamespacesRequireAttention
+        expr: count(turbopuffer_namespace_unindexed_bytes > 2147483648) >= 3
+        for: 10m
+        labels:
+          severity: warning
+          service: turbopuffer
+          component: infrastructure
+        annotations:
+          summary: "{{ $value }} namespaces require attention"
+          description: |
+            {{ $value }} namespaces currently have >2GB of unindexed data.
+
+            This may indicate a systemic issue:
+            - High write volume across multiple namespaces
+            - Turbopuffer service degradation
+            - Regional performance issues
+
+            Action required: Review all affected namespaces in the Grafana dashboard.
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview"
+
+  - name: turbopuffer_exporter_alerts
+    interval: 60s
+    rules:
+      # Critical: Exporter is down
+      - alert: TurbopufferExporterDown
+        expr: up{job="turbopuffer"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: turbopuffer
+          component: exporter
+        annotations:
+          summary: "Turbopuffer exporter is down"
+          description: |
+            The tpuff Prometheus exporter has been down for more than 5 minutes.
+
+            Impact: No metrics are being collected. Monitoring is blind.
+
+            Action required:
+            - Check exporter container/process status
+            - Review exporter logs for errors
+            - Verify TURBOPUFFER_API_KEY is set correctly
+            - Check network connectivity to Turbopuffer API
+          runbook_url: "https://github.com/hev/tpuff/blob/main/DOCKER.md#troubleshooting"
+
+      # Warning: Exporter scrapes are slow
+      - alert: TurbopufferExporterSlowScrapes
+        expr: turbopuffer_exporter_scrape_duration_seconds > 30
+        for: 10m
+        labels:
+          severity: warning
+          service: turbopuffer
+          component: exporter
+        annotations:
+          summary: "Turbopuffer exporter scrapes are slow"
+          description: |
+            Exporter scrapes are taking {{ $value | printf "%.1f" }} seconds (threshold: 30s).
+
+            This may indicate:
+            - Turbopuffer API slowness
+            - Network latency issues
+            - Too many namespaces being queried
+
+            Action required:
+            - Check Turbopuffer API status
+            - Consider increasing --timeout flag
+            - Review --all-regions flag if querying multiple regions
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview"
+
+      # Warning: Exporter hasn't scraped recently
+      - alert: TurbopufferExporterStale
+        expr: time() - turbopuffer_exporter_last_scrape_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          service: turbopuffer
+          component: exporter
+        annotations:
+          summary: "Turbopuffer exporter metrics are stale"
+          description: |
+            Last successful scrape was {{ $value | printf "%.0f" }} seconds ago (threshold: 5 minutes).
+
+            Exporter may be having issues refreshing metrics.
+
+            Action required:
+            - Check exporter logs
+            - Verify Turbopuffer API is responding
+            - Check API key permissions
+          dashboard_url: "http://localhost:3000/d/turbopuffer-overview"

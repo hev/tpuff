@@ -341,7 +341,84 @@ npm run docker:exporter:logs
 npm run docker:exporter:stop
 ```
 
-See [DOCKER.md](./DOCKER.md) for complete Docker documentation.
+See [DOCKER.md](./DOCKER.md) for complete Docker documentation including a full monitoring stack with Grafana.
+
+## Monitoring & Observability
+
+### Grafana Dashboard
+
+A comprehensive Grafana dashboard is included for visualizing Turbopuffer metrics collected by the Prometheus exporter.
+
+**Features:**
+- **17 monitoring panels** showing namespace health, storage trends, and index status
+- **Real-time aggregate metrics** across all namespaces (total rows, storage, unindexed bytes)
+- **2GB threshold alerts** with color-coded warnings (yellow at 2GB, red at 5GB)
+- **Index health monitoring** showing percentage of up-to-date indexes (target: >95%)
+- **Per-namespace breakdown** with sortable table and gradient gauge visualization
+- **Multi-select variables** for filtering by region and namespace
+- **Time series graphs** showing trends over time
+- **Regional distribution** charts
+
+**Quick Start:**
+
+1. Start the complete monitoring stack:
+```bash
+# See DOCKER.md for the full docker-compose.yml
+docker-compose up -d
+```
+
+2. Access Grafana:
+```
+http://localhost:3000
+Default credentials: admin/admin (change on first login)
+```
+
+3. The "Turbopuffer Overview" dashboard will be automatically provisioned in the "Turbopuffer" folder.
+
+**Dashboard Highlights:**
+
+- **Namespaces Requiring Attention**: Shows count of namespaces with >2GB unindexed data
+- **Index Health %**: Gauge showing percentage of namespaces with up-to-date indexes
+- **Storage Growth Rate**: Real-time bytes-per-second growth across namespaces
+- **Unindexed Bytes Over Time**: Time series with 2GB threshold line for early warning
+- **Table View**: Sortable per-namespace details with color-coded unindexed bytes
+
+**Manual Import:**
+
+1. Open Grafana → Dashboards → Import
+2. Upload `grafana/dashboards/turbopuffer-overview.json`
+3. Select your Prometheus datasource
+4. Click Import
+
+For detailed documentation, configuration options, PromQL queries, troubleshooting, and alerting examples, see [grafana/README.md](./grafana/README.md).
+
+### Observability Best Practices
+
+**Recommended monitoring setup:**
+
+1. **Exporter**: Run the tpuff exporter to collect namespace metrics
+   - Use `--all-regions` to monitor all your Turbopuffer regions
+   - Set `--interval 60` for 1-minute refresh (balance freshness vs API load)
+
+2. **Prometheus**: Scrape the exporter every 60 seconds
+   - Retention: 15+ days recommended for trend analysis
+   - Consider recording rules for frequently-used aggregations
+
+3. **Grafana**: Use the provided dashboard for visualization
+   - Dashboard includes 2GB threshold visualization across all panels
+
+4. **Alertmanager**: Configure alerts for proactive monitoring
+   - **Pre-configured alert rules** are included in `prometheus/rules/turbopuffer.yml`
+   - **2GB threshold alert**: Fires when namespace has >2GB unindexed data for 5+ minutes (warning)
+   - **5GB critical alert**: Fires when namespace has >5GB unindexed data for 10+ minutes (critical)
+   - **Index health alert**: Fires when <95% of namespaces have up-to-date indexes
+   - **Exporter health alerts**: Monitor exporter uptime and performance
+   - See `prometheus/README.md` for setup instructions and Slack/PagerDuty/email integration examples
+
+5. **Regular Reviews**:
+   - Monitor the "Namespaces Requiring Attention" panel daily
+   - Track storage growth rate to plan capacity
+   - Use the table view to identify namespaces needing optimization
 
 ## Future Features
 
