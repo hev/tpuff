@@ -3,6 +3,7 @@ import { getTurbopufferClient } from '../client.js';
 import chalk from 'chalk';
 import Table from 'cli-table3';
 import { debugLog } from '../utils/debug.js';
+import { fetchNamespacesWithMetadata } from '../utils/metadata-fetcher.js';
 
 export function createListCommand(): Command {
   const list = new Command('list')
@@ -11,13 +12,34 @@ export function createListCommand(): Command {
     .option('-n, --namespace <name>', 'Namespace to list documents from')
     .option('-k, --top-k <number>', 'Number of documents to return', '10')
     .option('-r, --region <region>', 'Override the region (e.g., aws-us-east-1, gcp-us-central1)')
-    .action(async (options?: { namespace?: string; topK: string; region?: string }) => {
+    .option('-A, --all', 'Query all regions')
+    .action(async (options?: { namespace?: string; topK: string; region?: string; all?: boolean }) => {
       const namespace = options?.namespace;
-      const client = getTurbopufferClient(options?.region);
+      const isAllRegions = options?.all || false;
+
+      // Validate that --all and --region are not used together
+      if (isAllRegions && options?.region) {
+        console.error(chalk.red('Error: Cannot use both --all and --region flags together'));
+        console.log(chalk.gray('Please use either --all to query all regions, or --region to specify a single region'));
+        process.exit(1);
+      }
+
+      const client = isAllRegions ? null : getTurbopufferClient(options?.region);
 
       try {
         if (namespace) {
           // List documents in namespace
+          if (isAllRegions) {
+            console.error(chalk.red('Error: --all flag is not supported when querying a specific namespace'));
+            console.log(chalk.gray('Please specify a region with -r <region> to query documents in a namespace'));
+            process.exit(1);
+          }
+
+          if (!client) {
+            console.error('Error: Client not initialized');
+            process.exit(1);
+          }
+
           const topK = parseInt(options?.topK || '10', 10);
 
           console.log(chalk.bold(`\nQuerying namespace: ${namespace} (top ${topK} results)\n`));
@@ -102,32 +124,18 @@ export function createListCommand(): Command {
           console.log(table.toString());
           console.log(chalk.gray(`\nQuery took ${result.performance.query_execution_ms.toFixed(2)}ms`));
         } else {
-          // List all namespaces
-          const page = await client.namespaces();
+          // List all namespaces using the shared metadata fetcher
+          const namespacesWithMetadata = await fetchNamespacesWithMetadata({
+            allRegions: isAllRegions,
+            region: options?.region
+          });
 
-          // Debug: Log API response
-          debugLog('Namespaces API Response', page);
-
-          const namespaces = page.namespaces;
-
-          if (namespaces.length === 0) {
+          if (namespacesWithMetadata.length === 0) {
             console.log('No namespaces found');
             return;
           }
 
-          console.log(chalk.bold(`\nFound ${namespaces.length} namespace(s):\n`));
-
-          // Fetch metadata for each namespace
-          const metadataPromises = namespaces.map(ns =>
-            client.namespace(ns.id).metadata().catch(() => null)
-          );
-          const metadataList = await Promise.all(metadataPromises);
-
-          // Combine namespaces with their metadata and sort by updated_at (most recent first)
-          const namespacesWithMetadata = namespaces.map((ns, index) => ({
-            namespace: ns,
-            metadata: metadataList[index]
-          }));
+          console.log(chalk.bold(`\nFound ${namespacesWithMetadata.length} namespace(s):\n`));
 
           namespacesWithMetadata.sort((a, b) => {
             // Handle cases where metadata might be null
@@ -141,15 +149,19 @@ export function createListCommand(): Command {
             return dateB - dateA;
           });
 
-          // Create table
+          // Create table with conditional region column
+          const headers = [
+            chalk.cyan('Namespace'),
+            ...(isAllRegions ? [chalk.cyan('Region')] : []),
+            chalk.cyan('Rows'),
+            chalk.cyan('Logical Bytes'),
+            chalk.cyan('Index Status'),
+            chalk.cyan('Unindexed Bytes'),
+            chalk.cyan('Updated')
+          ];
+
           const table = new Table({
-            head: [
-              chalk.cyan('Namespace'),
-              chalk.cyan('Rows'),
-              chalk.cyan('Logical Bytes'),
-              chalk.cyan('Index Status'),
-              chalk.cyan('Updated')
-            ],
+            head: headers,
             style: {
               head: [],
               border: ['grey']
@@ -157,27 +169,39 @@ export function createListCommand(): Command {
           });
 
           // Add rows to table
-          namespacesWithMetadata.forEach(({ namespace: ns, metadata }) => {
+          namespacesWithMetadata.forEach(({ namespace: ns, metadata, region }) => {
             if (metadata) {
-              const indexStatus = metadata.index.status === 'up-to-date'
+              const indexInfo = extractIndexInfo(metadata.index);
+              const indexStatus = indexInfo.status === 'up-to-date'
                 ? chalk.green('up-to-date')
-                : chalk.red(`updating (${formatBytes(metadata.index.status === 'updating' ? (metadata.index as any).unindexed_bytes : 0)} unindexed)`);
+                : chalk.red('updating');
+              const unindexedBytes = indexInfo.unindexedBytes > 0
+                ? chalk.red(formatBytes(indexInfo.unindexedBytes))
+                : formatBytes(0);
 
-              table.push([
+              const row = [
                 chalk.bold(ns.id),
+                ...(isAllRegions && region ? [chalk.gray(region)] : []),
                 metadata.approx_row_count.toLocaleString(),
                 formatBytes(metadata.approx_logical_bytes),
                 indexStatus,
+                unindexedBytes,
                 formatUpdatedAt(metadata.updated_at)
-              ]);
+              ];
+
+              table.push(row);
             } else {
-              table.push([
+              const row = [
                 chalk.bold(ns.id),
+                ...(isAllRegions && region ? [chalk.gray(region)] : []),
+                chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A')
-              ]);
+              ];
+
+              table.push(row);
             }
           });
 
@@ -253,4 +277,23 @@ function extractVectorInfo(schema: { [key: string]: any }): { attributeName: str
   }
 
   return null;
+}
+
+/**
+ * Extracts index status and unindexed bytes from namespace metadata
+ * @param index The index metadata from namespace
+ * @returns Object with status and unindexedBytes
+ */
+function extractIndexInfo(index: any): { status: string; unindexedBytes: number } {
+  if (index.status === 'up-to-date') {
+    return {
+      status: 'up-to-date',
+      unindexedBytes: 0
+    };
+  } else {
+    return {
+      status: 'updating',
+      unindexedBytes: index.unindexed_bytes
+    };
+  }
 }

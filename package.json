@@ -1,6 +1,6 @@
 {
   "name": "tpuff-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A TypeScript CLI for interacting with turbopuffer vector database",
   "type": "module",
   "main": "dist/index.js",
@@ -19,11 +19,17 @@
     "start": "node dist/index.js",
     "prepublishOnly": "npm run build",
     "release": "./scripts/release.sh",
-    "docker:build": "docker build -t tpuff-embeddings:0.1.0 docker/ && docker tag tpuff-embeddings:0.1.0 tpuff-embeddings:latest",
+    "docker:build": "docker build -t tpuff-embeddings:0.2.0 docker/ && docker tag tpuff-embeddings:0.2.0 tpuff-embeddings:latest",
     "docker:start": "docker run -d --name tpuff-embeddings -p 5050:5050 tpuff-embeddings",
     "docker:stop": "docker stop tpuff-embeddings && docker rm tpuff-embeddings",
     "docker:logs": "docker logs -f tpuff-embeddings",
-    "docker:shell": "docker exec -it tpuff-embeddings /bin/bash"
+    "docker:shell": "docker exec -it tpuff-embeddings /bin/bash",
+    "docker:exporter:build": "docker build -f Dockerfile.exporter -t tpuff-exporter:0.2.0 . && docker tag tpuff-exporter:0.2.0 tpuff-exporter:latest",
+    "docker:exporter:start": "docker run -d --name tpuff-exporter -p 9876:9876 -e TURBOPUFFER_API_KEY tpuff-exporter",
+    "docker:exporter:stop": "docker stop tpuff-exporter && docker rm tpuff-exporter",
+    "docker:exporter:logs": "docker logs -f tpuff-exporter",
+    "docker:exporter:shell": "docker exec -it tpuff-exporter /bin/sh",
+    "docker:exporter:publish": "docker tag tpuff-exporter:0.2.0 hevmind/tpuff-exporter:0.2.0 && docker tag tpuff-exporter:0.2.0 hevmind/tpuff-exporter:latest && docker push hevmind/tpuff-exporter:0.2.0 && docker push hevmind/tpuff-exporter:latest"
   },
   "keywords": [
     "turbopuffer",
