@@ -87,7 +87,7 @@ tpuff search "your query text" -n my-namespace --fts content-field
 
 **Filter search:**
 ```bash
-tpuff search "your query text" -n my-namespace -f '{"field": "value"}'
+tpuff search "your query text" -n my-namespace -f '["field", "Eq", "value"]'
 ```
 
 **Options:**
@@ -141,6 +141,7 @@ See [monitoring.md](./monitoring.md) for detailed instructions on:
 - Recall evaluation metrics
 - Cursor for namespace pagination
 - Cache status and warming option
+- Third party embedding generation (e.g. OpenAI, Cohere, etc.)
 - Namespace backup and restore (to s3 or file)
 - Filterable property management
 - Feedback welcome (file an issue)
