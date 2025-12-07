@@ -13,7 +13,7 @@ const program = new Command();
 program
   .name('tpuff')
   .description('A TypeScript CLI for interacting with turbopuffer')
-  .version('0.1.0')
+  .version('0.3.0')
   .option('--debug', 'Enable debug logging to see raw API requests/responses')
   .hook('preAction', (thisCommand) => {
     // Enable debug if --debug flag is passed at any level
