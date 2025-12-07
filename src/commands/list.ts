@@ -13,9 +13,11 @@ export function createListCommand(): Command {
     .option('-k, --top-k <number>', 'Number of documents to return', '10')
     .option('-r, --region <region>', 'Override the region (e.g., aws-us-east-1, gcp-us-central1)')
     .option('-A, --all', 'Query all regions')
-    .action(async (options?: { namespace?: string; topK: string; region?: string; all?: boolean }) => {
+    .option('--recall', 'Include recall estimation (slower)')
+    .action(async (options?: { namespace?: string; topK: string; region?: string; all?: boolean; recall?: boolean }) => {
       const namespace = options?.namespace;
       const isAllRegions = options?.all || false;
+      const includeRecall = options?.all || options?.recall || false;
 
       // Validate that --all and --region are not used together
       if (isAllRegions && options?.region) {
@@ -127,7 +129,8 @@ export function createListCommand(): Command {
           // List all namespaces using the shared metadata fetcher
           const namespacesWithMetadata = await fetchNamespacesWithMetadata({
             allRegions: isAllRegions,
-            region: options?.region
+            region: options?.region,
+            includeRecall
           });
 
           if (namespacesWithMetadata.length === 0) {
@@ -149,7 +152,7 @@ export function createListCommand(): Command {
             return dateB - dateA;
           });
 
-          // Create table with conditional region column
+          // Create table with conditional region and recall columns
           const headers = [
             chalk.cyan('Namespace'),
             ...(isAllRegions ? [chalk.cyan('Region')] : []),
@@ -157,6 +160,7 @@ export function createListCommand(): Command {
             chalk.cyan('Logical Bytes'),
             chalk.cyan('Index Status'),
             chalk.cyan('Unindexed Bytes'),
+            ...(includeRecall ? [chalk.cyan('Recall')] : []),
             chalk.cyan('Updated')
           ];
 
@@ -169,7 +173,7 @@ export function createListCommand(): Command {
           });
 
           // Add rows to table
-          namespacesWithMetadata.forEach(({ namespace: ns, metadata, region }) => {
+          namespacesWithMetadata.forEach(({ namespace: ns, metadata, region, recall }) => {
             if (metadata) {
               const indexInfo = extractIndexInfo(metadata.index);
               const indexStatus = indexInfo.status === 'up-to-date'
@@ -186,6 +190,7 @@ export function createListCommand(): Command {
                 formatBytes(metadata.approx_logical_bytes),
                 indexStatus,
                 unindexedBytes,
+                ...(includeRecall ? [formatRecall(recall)] : []),
                 formatUpdatedAt(metadata.updated_at)
               ];
 
@@ -198,6 +203,7 @@ export function createListCommand(): Command {
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
                 chalk.gray('N/A'),
+                ...(includeRecall ? [chalk.gray('N/A')] : []),
                 chalk.gray('N/A')
               ];
 
@@ -252,6 +258,27 @@ function formatUpdatedAt(timestamp: string): string {
       day: 'numeric',
       year: 'numeric'
     });
+  }
+}
+
+/**
+ * Formats recall as a color-coded percentage
+ */
+function formatRecall(recall: any): string {
+  if (!recall) {
+    return chalk.gray('N/A');
+  }
+
+  const percentage = (recall.avg_recall * 100).toFixed(1);
+  const displayValue = `${percentage}%`;
+
+  // Color-code based on recall quality
+  if (recall.avg_recall > 0.95) {
+    return chalk.green(displayValue);  // Excellent
+  } else if (recall.avg_recall > 0.8) {
+    return chalk.yellow(displayValue);  // Good
+  } else {
+    return chalk.red(displayValue);     // Needs attention
   }
 }
 
