@@ -1,6 +1,6 @@
-# Turbopuffer CLI (tpuff) & Exporter
+# Turbopuffer CLI (tpuff)
 
-This repo contains a CLI for interacting with turbopuffer, which can also be used as a Prometheus exporter for namespace metrics. The CLI can be used to list and filter namespaces, browse namespace data, perform full-text search, and execute admin functions. The exporter is offered as a pre-built Docker image.
+A TypeScript CLI for interacting with turbopuffer. This tool allows you to list and filter namespaces, browse namespace data, perform full-text search, and export metrics to Prometheus.
 
 ## Prerequisites
 
@@ -18,7 +18,11 @@ Install globally via npm or bun:
 
 ```bash
 npm install -g tpuff-cli
-# or
+```
+
+or 
+
+```bash
 bun add -g tpuff-cli
 ```
 
@@ -133,28 +137,11 @@ See [monitoring.md](./monitoring.md) for detailed instructions on:
 - Observability best practices
 
 
-## Future Features
-
-See [claude.md](./claude.md) for planned features including:
+## Roadmap
 - Recall evaluation metrics
 - Cursor for namespace pagination
-- Cache warming
+- Cache status and warming option
 - Namespace backup and restore (to s3 or file)
 - Filterable property management
 - Feedback welcome (file an issue)
 
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run dev
-
-# Build for production
-npm run build
-
-# Run built version
-npm start
-```
