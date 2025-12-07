@@ -82,8 +82,8 @@ export function createSearchCommand(): Command {
 
             // Check if it's a model loading error
             if (errorMsg.includes('Could not locate file') ||
-                errorMsg.includes('Unauthorized access') ||
-                errorMsg.includes('onnx')) {
+              errorMsg.includes('Unauthorized access') ||
+              errorMsg.includes('onnx')) {
               console.error(chalk.red('\nError: Failed to load model'));
               console.error(chalk.yellow('\nThis CLI requires models from the Xenova organization that are in ONNX format.'));
               console.error(chalk.gray('\nPopular embedding models:'));
@@ -134,7 +134,7 @@ export function createSearchCommand(): Command {
             parsedFilters = JSON.parse(options.filters);
           } catch (error) {
             console.error(chalk.red('Error: Invalid filter JSON format'));
-            console.error(chalk.yellow('Example: -f \'{"category": ["tech", "science"]}\''));
+            console.error(chalk.yellow('Example: -f \'["category", "In", ["tech", "science"]]\''));
             process.exit(1);
           }
         }
