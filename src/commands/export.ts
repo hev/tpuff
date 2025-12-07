@@ -229,10 +229,11 @@ async function refreshMetrics(options: ServerOptions): Promise<void> {
       region: options.region
     });
 
-    // Fetch namespaces with metadata
+    // Fetch namespaces with metadata and recall
     const namespaces = await fetchNamespacesWithMetadata({
       allRegions: options.allRegions,
-      region: options.region
+      region: options.region,
+      includeRecall: true
     });
 
     debugLog('Fetched namespaces', {
@@ -319,6 +320,13 @@ function generatePrometheusMetrics(namespaces: NamespaceWithMetadata[]): Prometh
     values: []
   };
 
+  const recallMetric: PrometheusMetric = {
+    name: 'turbopuffer_namespace_recall',
+    type: 'gauge',
+    help: 'Average vector recall estimation (0-1 scale)',
+    values: []
+  };
+
   const infoMetric: PrometheusMetric = {
     name: 'turbopuffer_namespace_info',
     type: 'gauge',
@@ -354,6 +362,14 @@ function generatePrometheusMetrics(namespaces: NamespaceWithMetadata[]): Prometh
       value: getUnindexedBytes(ns.metadata)
     });
 
+    // Add recall metric if recall data is available
+    if (ns.recall) {
+      recallMetric.values.push({
+        labels,
+        value: ns.recall.avg_recall
+      });
+    }
+
     infoMetric.values.push({
       labels: {
         ...labels,
@@ -372,6 +388,9 @@ function generatePrometheusMetrics(namespaces: NamespaceWithMetadata[]): Prometh
   }
   if (unindexedBytesMetric.values.length > 0) {
     metrics.push(unindexedBytesMetric);
+  }
+  if (recallMetric.values.length > 0) {
+    metrics.push(recallMetric);
   }
   if (infoMetric.values.length > 0) {
     metrics.push(infoMetric);

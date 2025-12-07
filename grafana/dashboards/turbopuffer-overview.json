@@ -359,11 +359,11 @@
               },
               {
                 "color": "yellow",
-                "value": 95
+                "value": 80
               },
               {
                 "color": "green",
-                "value": 99
+                "value": 95
               }
             ]
           },
@@ -399,13 +399,13 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(count(turbopuffer_namespace_rows{region=~\"$region\", namespace=~\"$namespace\", index_status=\"up-to-date\"}) / count(turbopuffer_namespace_rows{region=~\"$region\", namespace=~\"$namespace\"})) * 100 or vector(100)",
+          "expr": "avg(turbopuffer_namespace_recall{region=~\"$region\", namespace=~\"$namespace\"}) * 100 or vector(0)",
           "instant": true,
           "refId": "A"
         }
       ],
-      "title": "Index Health Percentage",
-      "description": "Percentage of namespaces with up-to-date indexes. Target: >95%",
+      "title": "Average Recall",
+      "description": "Average vector recall across namespaces. Target: >95%",
       "type": "gauge"
     },
     {

@@ -20,15 +20,23 @@ export interface NamespaceMetadata {
   schema: Record<string, any>;
 }
 
+export interface RecallData {
+  avg_recall: number;
+  avg_ann_count: number;
+  avg_exhaustive_count: number;
+}
+
 export interface NamespaceWithMetadata {
   namespace: { id: string };
   metadata: NamespaceMetadata | null;
   region?: string;
+  recall: RecallData | null;
 }
 
 export interface FetchNamespacesOptions {
   allRegions?: boolean;
   region?: string;
+  includeRecall?: boolean;
 }
 
 /**
@@ -38,7 +46,7 @@ export interface FetchNamespacesOptions {
 export async function fetchNamespacesWithMetadata(
   options: FetchNamespacesOptions = {}
 ): Promise<NamespaceWithMetadata[]> {
-  const { allRegions = false, region } = options;
+  const { allRegions = false, region, includeRecall = false } = options;
 
   let namespacesWithMetadata: NamespaceWithMetadata[] = [];
 
@@ -67,10 +75,22 @@ export async function fetchNamespacesWithMetadata(
           });
           const metadataList = await Promise.all(metadataPromises);
 
+          // Add recall fetching in parallel if requested
+          let recallList: (RecallData | null)[] = [];
+          if (includeRecall) {
+            const recallPromises = page.namespaces.map(ns =>
+              fetchRecallData(regionalClient, ns.id)
+            );
+            recallList = await Promise.all(recallPromises);
+          } else {
+            recallList = page.namespaces.map(() => null);
+          }
+
           // Add namespaces from this region with region info
           const regionalNamespaces = page.namespaces.map((ns, index) => ({
             namespace: ns,
             metadata: metadataList[index],
+            recall: recallList[index],
             region: currentRegion
           }));
 
@@ -102,15 +122,50 @@ export async function fetchNamespacesWithMetadata(
     });
     const metadataList = await Promise.all(metadataPromises);
 
+    // Add recall fetching in parallel if requested
+    let recallList: (RecallData | null)[] = [];
+    if (includeRecall) {
+      const recallPromises = namespaces.map(ns => fetchRecallData(client, ns.id));
+      recallList = await Promise.all(recallPromises);
+    } else {
+      recallList = namespaces.map(() => null);
+    }
+
     // Combine namespaces with their metadata
     namespacesWithMetadata = namespaces.map((ns, index) => ({
       namespace: ns,
       metadata: metadataList[index],
+      recall: recallList[index],
       region
     }));
   }
 
   return namespacesWithMetadata;
+}
+
+/**
+ * Fetches recall metrics for a namespace
+ */
+async function fetchRecallData(
+  client: any,
+  namespaceId: string
+): Promise<RecallData | null> {
+  try {
+    debugLog(`Fetching recall for namespace: ${namespaceId}`, {});
+    const recallResponse = await client.namespace(namespaceId).recall({
+      num: 25,
+      top_k: 10
+    });
+    debugLog(`Recall for ${namespaceId}`, recallResponse);
+    return {
+      avg_recall: recallResponse.avg_recall,
+      avg_ann_count: recallResponse.avg_ann_count,
+      avg_exhaustive_count: recallResponse.avg_exhaustive_count
+    };
+  } catch (error) {
+    debugLog(`Failed to fetch recall for ${namespaceId}`, error);
+    return null;
+  }
 }
 
 /**
