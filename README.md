@@ -138,7 +138,6 @@ See [monitoring.md](./monitoring.md) for detailed instructions on:
 
 
 ## Roadmap
-- Recall evaluation metrics
 - Cursor for namespace pagination
 - Cache status and warming option
 - Third party embedding generation (e.g. OpenAI, Cohere, etc.)
