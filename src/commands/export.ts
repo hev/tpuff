@@ -22,6 +22,8 @@ interface ExportOptions {
   allRegions?: boolean;
   interval: string;
   timeout: string;
+  includeRecall?: boolean;
+  recallInterval: string;
 }
 
 interface MetricsCache {
@@ -30,9 +32,19 @@ interface MetricsCache {
   error?: string;
 }
 
+interface RecallCache {
+  data: Map<string, { recall: any; region?: string }>;
+  lastUpdate: Date;
+}
+
 let metricsCache: MetricsCache = {
   data: '# Waiting for first scrape...\n',
   lastUpdate: new Date()
+};
+
+let recallCache: RecallCache = {
+  data: new Map(),
+  lastUpdate: new Date(0) // Epoch to trigger immediate first fetch
 };
 
 let lastScrapeSuccess = true;
@@ -47,10 +59,13 @@ export function createExportCommand(): Command {
     .option('-A, --all-regions', 'Query all Turbopuffer regions', false)
     .option('-i, --interval <seconds>', 'Metric refresh interval in seconds', '60')
     .option('-t, --timeout <seconds>', 'API request timeout per region in seconds', '30')
+    .option('--include-recall', 'Include recall estimation metrics (runs queries, incurs costs)', false)
+    .option('--recall-interval <seconds>', 'Recall estimation refresh interval in seconds', '3600')
     .action(async (options: ExportOptions) => {
       const port = parseInt(options.port, 10);
       const interval = parseInt(options.interval, 10);
       const timeout = parseInt(options.timeout, 10);
+      const recallInterval = parseInt(options.recallInterval, 10);
 
       // Validate options
       if (isNaN(port) || port < 1 || port > 65535) {
@@ -68,6 +83,11 @@ export function createExportCommand(): Command {
         process.exit(1);
       }
 
+      if (isNaN(recallInterval) || recallInterval < 1) {
+        console.error(chalk.red('Error: Recall interval must be a positive number'));
+        process.exit(1);
+      }
+
       // Validate mutual exclusivity of --all-regions and --region
       if (options.allRegions && options.region) {
         console.error(chalk.red('Error: Cannot use both --all-regions and --region flags together'));
@@ -81,7 +101,9 @@ export function createExportCommand(): Command {
           region: options.region,
           allRegions: options.allRegions || false,
           interval,
-          timeout
+          timeout,
+          includeRecall: options.includeRecall || false,
+          recallInterval
         });
       } catch (error) {
         console.error(chalk.red('Error starting exporter:'), error instanceof Error ? error.message : String(error));
@@ -98,6 +120,8 @@ interface ServerOptions {
   allRegions: boolean;
   interval: number;
   timeout: number;
+  includeRecall: boolean;
+  recallInterval: number;
 }
 
 async function startHttpServer(options: ServerOptions): Promise<void> {
@@ -150,6 +174,7 @@ async function startHttpServer(options: ServerOptions): Promise<void> {
     <p><strong>Last Update:</strong> ${metricsCache.lastUpdate.toISOString()}</p>
     <p><strong>Refresh Interval:</strong> ${options.interval}s</p>
     <p><strong>Region Mode:</strong> ${options.allRegions ? 'All regions' : options.region || 'Default'}</p>
+    <p><strong>Recall Metrics:</strong> ${options.includeRecall ? `enabled (refresh: ${options.recallInterval}s)` : 'disabled'}</p>
   </div>
   <h2>Endpoints</h2>
   <ul>
@@ -201,6 +226,12 @@ async function startHttpServer(options: ServerOptions): Promise<void> {
     console.log(chalk.gray(`  Port:           ${options.port}`));
     console.log(chalk.gray(`  Refresh:        ${options.interval}s`));
     console.log(chalk.gray(`  Region mode:    ${options.allRegions ? 'All regions' : options.region || 'Default'}`));
+    if (options.includeRecall) {
+      console.log(chalk.yellow(`  Recall:         enabled (refresh: ${options.recallInterval}s)`));
+      console.log(chalk.gray(`                  Note: Recall estimation runs queries and incurs costs`));
+    } else {
+      console.log(chalk.gray(`  Recall:         disabled (use --include-recall to enable)`));
+    }
     console.log(chalk.gray(`\n  Endpoints:`));
     console.log(chalk.gray(`    http://localhost:${options.port}/metrics`));
     console.log(chalk.gray(`    http://localhost:${options.port}/health`));
@@ -226,19 +257,61 @@ async function refreshMetrics(options: ServerOptions): Promise<void> {
   try {
     debugLog('Starting metrics refresh', {
       allRegions: options.allRegions,
-      region: options.region
+      region: options.region,
+      includeRecall: options.includeRecall
     });
 
-    // Fetch namespaces with metadata and recall
+    // Determine if we should refresh recall data
+    const timeSinceLastRecall = Date.now() - recallCache.lastUpdate.getTime();
+    const shouldRefreshRecall = options.includeRecall &&
+      (timeSinceLastRecall >= options.recallInterval * 1000);
+
+    if (shouldRefreshRecall) {
+      debugLog('Refreshing recall data', {
+        timeSinceLastRecall: timeSinceLastRecall / 1000,
+        recallInterval: options.recallInterval
+      });
+    }
+
+    // Fetch namespaces with metadata (recall fetched separately on its own schedule)
     const namespaces = await fetchNamespacesWithMetadata({
       allRegions: options.allRegions,
       region: options.region,
-      includeRecall: true
+      includeRecall: shouldRefreshRecall
     });
 
     debugLog('Fetched namespaces', {
-      count: namespaces.length
+      count: namespaces.length,
+      refreshedRecall: shouldRefreshRecall
     });
+
+    // Update recall cache if we refreshed it
+    if (shouldRefreshRecall) {
+      recallCache.data.clear();
+      for (const ns of namespaces) {
+        if (ns.recall) {
+          recallCache.data.set(ns.namespace.id, {
+            recall: ns.recall,
+            region: ns.region
+          });
+        }
+      }
+      recallCache.lastUpdate = new Date();
+      debugLog('Updated recall cache', {
+        cachedNamespaces: recallCache.data.size
+      });
+    } else if (options.includeRecall) {
+      // Merge cached recall data into namespaces
+      for (const ns of namespaces) {
+        const cached = recallCache.data.get(ns.namespace.id);
+        if (cached && cached.region === ns.region) {
+          ns.recall = cached.recall;
+        }
+      }
+      debugLog('Merged cached recall data', {
+        cachedNamespaces: recallCache.data.size
+      });
+    }
 
     // Generate Prometheus metrics
     const metrics = generatePrometheusMetrics(namespaces);
