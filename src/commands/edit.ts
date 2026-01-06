@@ -54,7 +54,8 @@ export function createEditCommand(): Command {
         const tmpFile = tmp.fileSync({ postfix: '.json' });
 
         // Write the document to the temp file
-        writeFileSync(tmpFile.name, JSON.stringify(docWithoutVector, null, 2));
+        const originalContent = JSON.stringify(docWithoutVector, null, 2);
+        writeFileSync(tmpFile.name, originalContent);
 
         console.log(chalk.cyan('Opening vim editor...'));
         console.log(chalk.gray('Save and quit (:wq) to upsert changes, or quit without saving (:q!) to cancel.\n'));
@@ -79,6 +80,12 @@ export function createEditCommand(): Command {
 
         // Clean up temp file
         tmpFile.removeCallback();
+
+        // Check if content was actually changed
+        if (editedContent === originalContent) {
+          console.log(chalk.yellow('\nNo changes made. Skipping upsert.'));
+          process.exit(0);
+        }
 
         // Parse the edited JSON
         let editedDoc;
