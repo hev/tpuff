@@ -121,14 +121,14 @@ def edit(
             edited_doc["vector"] = original_vector
         edited_doc["id"] = id
 
-        # Upsert the document
+        # Write the document back (upsert)
         console.print("\n[cyan]Upserting document...[/cyan]")
 
-        upsert_params = {"upsert_rows": [edited_doc]}
+        write_params = {"upsert_rows": [edited_doc]}
 
-        debug_log("Upsert Parameters", upsert_params)
-        ns.upsert(**upsert_params)
-        debug_log("Upsert Response", "Success")
+        debug_log("Write Parameters", write_params)
+        ns.write(**write_params)
+        debug_log("Write Response", "Success")
 
         console.print("[green]✓ Document updated successfully[/green]")
 
