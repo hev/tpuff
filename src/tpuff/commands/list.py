@@ -139,11 +139,14 @@ def display_namespace_documents(
     # Debug: Log API response
     debug_log("Query Response", result)
 
-    if not result or len(result) == 0:
+    # Extract rows from the response
+    rows = result.rows if hasattr(result, "rows") else []
+
+    if not rows:
         console.print("No documents found in namespace")
         return
 
-    console.print(f"[bold]Found {len(result)} document(s):[/bold]\n")
+    console.print(f"[bold]Found {len(rows)} document(s):[/bold]\n")
 
     # Create table for results
     table = Table(show_header=True, header_style="cyan")
@@ -151,33 +154,23 @@ def display_namespace_documents(
     table.add_column("Contents")
 
     # Add rows to table
-    for row in result:
+    for row in rows:
+        # Get the row as a dict using model_dump() or fallback
+        if hasattr(row, "model_dump"):
+            row_dict = row.model_dump()
+        elif hasattr(row, "to_dict"):
+            row_dict = row.to_dict()
+        else:
+            row_dict = {"id": getattr(row, "id", "N/A")}
+
+        row_id = row_dict.get("id", getattr(row, "id", "N/A"))
+
         # Collect all attributes except system fields
         contents = {}
-        row_dict = dict(row) if hasattr(row, "__iter__") else {"id": row.id}
-
-        # Handle the row - it might be a Row object with attributes
-        if hasattr(row, "id"):
-            row_id = row.id
-            # Get attributes from the row object
-            for key in dir(row):
-                if not key.startswith("_") and key not in ("id", "vector", "dist", "attributes"):
-                    try:
-                        value = getattr(row, key)
-                        if not callable(value):
-                            contents[key] = value
-                    except Exception:
-                        pass
-            # Also check for __dict__ or iteration
-            if hasattr(row, "__dict__"):
-                for key, value in row.__dict__.items():
-                    if key not in ("id", "vector", "dist", "attributes", "_data"):
-                        contents[key] = value
-        else:
-            row_id = row_dict.get("id", "N/A")
-            for key, value in row_dict.items():
-                if key not in ("id", "vector", "dist", "attributes"):
-                    contents[key] = value
+        exclude_keys = {"id", "vector", "$dist", "dist", "attributes"}
+        for key, value in row_dict.items():
+            if key not in exclude_keys and not key.startswith("_"):
+                contents[key] = value
 
         # Stringify and truncate contents
         contents_str = json.dumps(contents, default=str)
