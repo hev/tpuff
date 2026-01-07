@@ -33,17 +33,17 @@ Porting tpuff-cli from TypeScript to Python while maintaining the same command s
 - [x] Port export command (Prometheus exporter)
 
 ### Phase 4: Testing & Polish
-- [ ] Test list command
-- [ ] Test search command with embeddings
-- [ ] Test get command
-- [ ] Test delete command
-- [ ] Test edit command
-- [ ] Test export command
-- [ ] Ensure output matches TypeScript version
-- [ ] Add proper error handling
+- [x] Test list command
+- [x] Test search command with embeddings
+- [x] Test get command
+- [x] Test delete command
+- [x] Test edit command
+- [x] Test export command
+- [x] Ensure output matches TypeScript version
+- [x] Add proper error handling
 
 ## Current Status
-**Status**: Phase 4 In Progress - Testing commands
+**Status**: COMPLETE - Python port fully tested and working!
 
 ## Session Log
 - Session 1: Initial exploration and project setup
@@ -51,3 +51,4 @@ Porting tpuff-cli from TypeScript to Python while maintaining the same command s
 - Session 3: Completed metrics.py (Prometheus formatting utilities)
 - Session 4: Ported list command + fixed client.py and metadata_fetcher.py for new turbopuffer SDK v1.2.0
 - Session 5: Ported search, delete, get, edit, and export commands
+- Session 6: Tested all commands, fixed edit.py (ns.upsert -> ns.write), added trust_remote_code=True for embeddings
