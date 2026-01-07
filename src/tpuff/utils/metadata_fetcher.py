@@ -146,7 +146,7 @@ def fetch_namespaces_with_metadata(
                 # Clear cache to ensure we get a new client for the new region
                 clear_client_cache()
                 client = get_turbopuffer_client(current_region)
-                namespaces_response = client.namespaces.list()
+                namespaces_response = client.namespaces()
                 debug_log(f"Namespaces in {current_region}", namespaces_response)
 
                 namespaces = list(namespaces_response)
@@ -194,7 +194,7 @@ def fetch_namespaces_with_metadata(
     else:
         # Query single region
         client = get_turbopuffer_client(region)
-        namespaces_response = client.namespaces.list()
+        namespaces_response = client.namespaces()
         debug_log("Namespaces API Response", namespaces_response)
         namespaces = list(namespaces_response)
 
