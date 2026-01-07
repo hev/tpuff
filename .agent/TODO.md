@@ -26,11 +26,11 @@ Porting tpuff-cli from TypeScript to Python while maintaining the same command s
 
 ### Phase 3: Commands
 - [x] Port list command (namespaces + documents)
-- [ ] Port search command (vector + FTS)
-- [ ] Port delete command (single, all, prefix)
-- [ ] Port edit command (vim editing)
-- [ ] Port get command (single document)
-- [ ] Port export command (Prometheus exporter)
+- [x] Port search command (vector + FTS)
+- [x] Port delete command (single, all, prefix)
+- [x] Port edit command (vim editing)
+- [x] Port get command (single document)
+- [x] Port export command (Prometheus exporter)
 
 ### Phase 4: Testing & Polish
 - [ ] Test all commands
@@ -38,10 +38,11 @@ Porting tpuff-cli from TypeScript to Python while maintaining the same command s
 - [ ] Add proper error handling
 
 ## Current Status
-**Status**: Phase 3 In Progress - Commands being ported
+**Status**: Phase 3 Complete - All commands ported!
 
 ## Session Log
 - Session 1: Initial exploration and project setup
 - Session 2: Completed metadata_fetcher.py utility with parallel fetching support
 - Session 3: Completed metrics.py (Prometheus formatting utilities)
 - Session 4: Ported list command + fixed client.py and metadata_fetcher.py for new turbopuffer SDK v1.2.0
+- Session 5: Ported search, delete, get, edit, and export commands
