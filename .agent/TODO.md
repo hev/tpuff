@@ -33,12 +33,17 @@ Porting tpuff-cli from TypeScript to Python while maintaining the same command s
 - [x] Port export command (Prometheus exporter)
 
 ### Phase 4: Testing & Polish
-- [ ] Test all commands
+- [ ] Test list command
+- [ ] Test search command with embeddings
+- [ ] Test get command
+- [ ] Test delete command
+- [ ] Test edit command
+- [ ] Test export command
 - [ ] Ensure output matches TypeScript version
 - [ ] Add proper error handling
 
 ## Current Status
-**Status**: Phase 3 Complete - All commands ported!
+**Status**: Phase 4 In Progress - Testing commands
 
 ## Session Log
 - Session 1: Initial exploration and project setup
