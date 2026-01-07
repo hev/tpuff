@@ -107,8 +107,11 @@ def display_namespace_documents(
     # Get namespace metadata to extract schema
     metadata = ns.metadata()
 
+    # Extract schema - access the dict attribute from model_dump()
+    schema_dict = metadata.model_dump().get("schema", {})
+
     # Extract vector info from schema
-    vector_info = extract_vector_info(metadata.schema)
+    vector_info = extract_vector_info(schema_dict)
 
     if not vector_info:
         console.print("[red]Error: No vector attribute found in namespace schema[/red]")
