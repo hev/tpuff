@@ -13,7 +13,7 @@ from tpuff.utils.debug import debug_log
 console = Console()
 
 
-@click.command("get")
+@click.command("get", context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("id")
 @click.option("-n", "--namespace", required=True, help="Namespace to query")
 @click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")

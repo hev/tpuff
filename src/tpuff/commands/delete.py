@@ -17,7 +17,7 @@ def prompt_user(message: str) -> str:
     return click.prompt(message, default="", show_default=False).strip()
 
 
-@click.command("delete")
+@click.command("delete", context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("-n", "--namespace", help="Namespace to delete")
 @click.option("--all", "delete_all", is_flag=True, help="Delete all namespaces")
 @click.option("--prefix", help="Delete all namespaces starting with prefix")

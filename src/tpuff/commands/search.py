@@ -41,7 +41,7 @@ def extract_vector_info(schema: dict) -> dict | None:
     return None
 
 
-@click.command("search")
+@click.command("search", context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("query")
 @click.option("-n", "--namespace", required=True, help="Namespace to search in")
 @click.option(

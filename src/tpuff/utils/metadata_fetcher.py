@@ -1,6 +1,7 @@
 """Namespace metadata fetching utilities."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 import concurrent.futures
 
@@ -25,8 +26,8 @@ class NamespaceMetadata:
     approx_row_count: int
     approx_logical_bytes: int
     index: dict[str, Any]
-    updated_at: str
-    created_at: str
+    updated_at: str | datetime
+    created_at: str | datetime
     schema: dict[str, Any]
     encryption: dict[str, Any] | None = None
 

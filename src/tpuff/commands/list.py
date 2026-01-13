@@ -34,10 +34,18 @@ def format_bytes(bytes_count: int) -> str:
     return f"{bytes_count:.2f} {sizes[i]}"
 
 
-def format_updated_at(timestamp: str) -> str:
+def format_updated_at(timestamp: str | datetime | None) -> str:
     """Format timestamp smartly: time if today, date otherwise."""
+    if timestamp is None:
+        return "[dim]N/A[/dim]"
+
     try:
-        date = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        # Handle datetime objects directly
+        if isinstance(timestamp, datetime):
+            date = timestamp
+        else:
+            date = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+
         now = datetime.now(date.tzinfo)
 
         is_today = (
@@ -51,7 +59,7 @@ def format_updated_at(timestamp: str) -> str:
         else:
             return date.strftime("%b %-d, %Y")
     except Exception:
-        return timestamp
+        return str(timestamp) if timestamp else "[dim]N/A[/dim]"
 
 
 def format_recall(recall_data) -> str:
@@ -213,7 +221,10 @@ def display_namespaces(
         if not item.metadata:
             return datetime.min
         try:
-            return datetime.fromisoformat(item.metadata.updated_at.replace("Z", "+00:00"))
+            updated_at = item.metadata.updated_at
+            if isinstance(updated_at, datetime):
+                return updated_at
+            return datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
         except Exception:
             return datetime.min
 
@@ -277,7 +288,7 @@ def display_namespaces(
     console.print(table)
 
 
-@click.command("list")
+@click.command("list", context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("-n", "--namespace", help="Namespace to list documents from")
 @click.option("-k", "--top-k", default=10, type=int, help="Number of documents to return")
 @click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")

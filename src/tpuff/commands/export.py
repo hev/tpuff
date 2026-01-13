@@ -400,7 +400,7 @@ def start_http_server(
         sys.exit(1)
 
 
-@click.command("export")
+@click.command("export", context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("-p", "--port", default=9876, type=int, help="HTTP server port")
 @click.option("-r", "--region", help="Query specific region (default: TURBOPUFFER_REGION env)")
 @click.option("-A", "--all-regions", is_flag=True, help="Query all Turbopuffer regions")
