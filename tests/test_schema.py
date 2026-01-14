@@ -973,3 +973,236 @@ class TestSchemaApplyContinueOnError:
         # Single namespace mode should still fail on conflicts
         assert result.exit_code == 1
         assert "type change not allowed" in result.output.lower()
+
+
+class TestSchemaApplyBatchErrorHandling:
+    """Tests for error handling during batch schema apply operations."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def valid_schema_file(self, tmp_path):
+        """Create a valid schema file for testing."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "string", "category": "string"}')
+        return str(schema_file)
+
+    def test_write_error_during_apply_reports_failure(self, runner, valid_schema_file):
+        """Test that write errors during apply are reported as failures."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "prod-orders"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                mock_metadata.schema = {}  # Empty schema (new namespace)
+                mock.metadata.return_value = mock_metadata
+                # prod-users write will fail
+                if name == "prod-users":
+                    mock.write.side_effect = Exception("API error: connection failed")
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", valid_schema_file, "--yes"]
+                )
+
+        # Should exit with failure code
+        assert result.exit_code == 1
+        assert "1 failed" in result.output.lower()
+        # prod-orders should still succeed
+        namespace_mocks["prod-orders"].write.assert_called_once()
+
+    def test_get_namespace_error_during_analysis_shows_error(self, runner, valid_schema_file):
+        """Test that get_namespace errors during analysis are shown in summary."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "prod-orders"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            # prod-users get_namespace will fail entirely
+            if name == "prod-users":
+                raise Exception("Network timeout")
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                mock_metadata.schema = {}
+                mock.metadata.return_value = mock_metadata
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", valid_schema_file, "--yes"]
+                )
+
+        assert result.exit_code == 0
+        assert "error" in result.output.lower()
+        assert "Network timeout" in result.output
+        # prod-orders should still be applied
+        namespace_mocks["prod-orders"].write.assert_called_once()
+
+    def test_all_namespaces_fail_to_write(self, runner, valid_schema_file):
+        """Test behavior when all namespaces fail during write."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "ns1"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "ns2"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                mock_metadata.schema = {}  # Empty schema
+                mock.metadata.return_value = mock_metadata
+                mock.write.side_effect = Exception("API unavailable")
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--all", "-f", valid_schema_file, "--yes"]
+                )
+
+        assert result.exit_code == 1
+        assert "2 failed" in result.output
+
+    def test_partial_success_reports_correctly(self, runner, valid_schema_file):
+        """Test that partial success is reported with correct counts."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "ns-success-1"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "ns-fail"
+        mock_ns3 = MagicMock()
+        mock_ns3.id = "ns-success-2"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2, mock_ns3]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                mock_metadata.schema = {}
+                mock.metadata.return_value = mock_metadata
+                # Only ns-fail will fail
+                if name == "ns-fail":
+                    mock.write.side_effect = Exception("Write failed")
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--all", "-f", valid_schema_file, "--yes"]
+                )
+
+        assert result.exit_code == 1
+        assert "2 namespace(s)" in result.output  # 2 successful
+        assert "1 failed" in result.output
+
+    def test_error_in_dry_run_still_shows_status(self, runner, valid_schema_file):
+        """Test that errors during analysis appear in dry run output."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "ns-ok"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "ns-error"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        def mock_get_ns(name, region=None):
+            # ns-error get_namespace fails entirely
+            if name == "ns-error":
+                raise Exception("Access denied")
+            mock = MagicMock()
+            mock_metadata = MagicMock()
+            mock_metadata.schema = {}
+            mock.metadata.return_value = mock_metadata
+            return mock
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--all", "-f", valid_schema_file, "--dry-run"]
+                )
+
+        assert result.exit_code == 0
+        assert "Access denied" in result.output
+        assert "Dry run mode" in result.output
+
+    def test_continue_on_error_with_mixed_errors(self, runner, tmp_path):
+        """Test --continue-on-error with both conflicts and write errors."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64", "new_field": "string"}')
+
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "ns-conflict"  # Type conflict
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "ns-write-error"  # Write will fail
+        mock_ns3 = MagicMock()
+        mock_ns3.id = "ns-success"  # Will succeed
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2, mock_ns3]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                if name == "ns-conflict":
+                    # Has conflicting type
+                    mock_metadata.schema = {"content": "string"}
+                else:
+                    # No existing schema
+                    mock_metadata.schema = {}
+                mock.metadata.return_value = mock_metadata
+                if name == "ns-write-error":
+                    mock.write.side_effect = Exception("Write failed")
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema,
+                    ["apply", "--all", "-f", str(schema_file), "--yes", "--continue-on-error"]
+                )
+
+        # Should fail because of write error
+        assert result.exit_code == 1
+        assert "Warning" in result.output  # Warning about conflicts
+        assert "1 failed" in result.output  # Write failure
+        # ns-conflict should NOT have write called (skipped due to conflict)
+        namespace_mocks["ns-conflict"].write.assert_not_called()
+        # ns-success should succeed
+        namespace_mocks["ns-success"].write.assert_called_once()
