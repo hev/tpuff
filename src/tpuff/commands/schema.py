@@ -7,8 +7,9 @@ from dataclasses import dataclass, field
 
 import click
 from rich.console import Console
+from rich.table import Table
 
-from tpuff.client import get_namespace
+from tpuff.client import get_namespace, get_turbopuffer_client
 
 console = Console()
 
@@ -356,33 +357,84 @@ def get_current_schema(ns) -> dict[str, object] | None:
         return None
 
 
-@schema.command("apply", context_settings={"help_option_names": ["-h", "--help"]})
-@click.option("-n", "--namespace", required=True, help="Target namespace to apply schema to")
-@click.option("-f", "--file", "schema_file", required=True, help="JSON file containing schema definition")
-@click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")
-@click.option("--dry-run", is_flag=True, help="Show diff only, don't apply changes")
-@click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
-@click.pass_context
-def schema_apply(
-    ctx: click.Context,
+def list_namespaces_by_prefix(prefix: str, region: str | None) -> list[str]:
+    """List namespaces matching a prefix.
+
+    Args:
+        prefix: The prefix to match against namespace names
+        region: Optional region override
+
+    Returns:
+        List of namespace IDs matching the prefix
+    """
+    client = get_turbopuffer_client(region)
+    namespaces = list(client.namespaces())
+    return sorted([ns.id for ns in namespaces if ns.id.startswith(prefix)])
+
+
+@dataclass
+class BatchApplyResult:
+    """Result of applying schema to a single namespace in a batch operation."""
+
+    namespace: str
+    success: bool
+    additions: int = 0
+    conflicts: int = 0
+    error: str | None = None
+
+
+def display_batch_summary(results: list[BatchApplyResult], dry_run: bool = False) -> None:
+    """Display a summary table of batch apply results.
+
+    Args:
+        results: List of BatchApplyResult objects
+        dry_run: Whether this was a dry run
+    """
+    table = Table(show_header=True, header_style="cyan")
+    table.add_column("Namespace")
+    table.add_column("Changes")
+    table.add_column("Status")
+
+    for result in results:
+        if result.conflicts > 0:
+            changes = f"+{result.additions} attributes [red]({result.conflicts} conflict(s))[/red]"
+            status = "[red]blocked[/red]"
+        elif result.error:
+            changes = "[dim]N/A[/dim]"
+            status = f"[red]error: {result.error}[/red]"
+        elif result.additions == 0:
+            changes = "[dim]no changes[/dim]"
+            status = "[green]up-to-date[/green]" if not dry_run else "[dim]would skip[/dim]"
+        else:
+            changes = f"+{result.additions} attribute(s)"
+            if dry_run:
+                status = "[yellow]would apply[/yellow]"
+            elif result.success:
+                status = "[green]applied[/green]"
+            else:
+                status = "[red]failed[/red]"
+
+        table.add_row(f"[bold]{result.namespace}[/bold]", changes, status)
+
+    console.print(table)
+
+
+def apply_schema_to_single_namespace(
     namespace: str,
-    schema_file: str,
+    new_schema: dict[str, object],
     region: str | None,
     dry_run: bool,
     yes: bool,
 ) -> None:
-    """Apply a schema from a JSON file to a namespace.
+    """Apply schema to a single namespace with interactive diff display.
 
-    Shows a diff of schema changes before applying. Type changes to existing
-    attributes are not allowed and will be flagged as conflicts.
+    Args:
+        namespace: Target namespace name
+        new_schema: Schema to apply
+        region: Optional region override
+        dry_run: If True, only show diff without applying
+        yes: If True, skip confirmation prompt
     """
-    # Load schema from file
-    new_schema = load_schema_file(schema_file)
-
-    if not new_schema:
-        console.print("[yellow]Schema file is empty, nothing to apply[/yellow]")
-        return
-
     # Get current schema from namespace
     ns = get_namespace(namespace, region)
     current_schema = get_current_schema(ns)
@@ -427,6 +479,184 @@ def schema_apply(
     except Exception as e:
         console.print(f"[red]Error applying schema: {e}[/red]")
         sys.exit(1)
+
+
+def apply_schema_to_multiple_namespaces(
+    namespaces: list[str],
+    new_schema: dict[str, object],
+    region: str | None,
+    dry_run: bool,
+    yes: bool,
+) -> None:
+    """Apply schema to multiple namespaces with batch summary display.
+
+    Args:
+        namespaces: List of target namespace names
+        new_schema: Schema to apply
+        region: Optional region override
+        dry_run: If True, only show what would change
+        yes: If True, skip confirmation prompt
+    """
+    # Phase 1: Compute diffs for all namespaces
+    results: list[BatchApplyResult] = []
+    has_any_conflicts = False
+    has_any_changes = False
+
+    console.print(f"\n[bold]Analyzing schema for {len(namespaces)} namespace(s)...[/bold]\n")
+
+    for ns_name in namespaces:
+        try:
+            ns = get_namespace(ns_name, region)
+            current_schema = get_current_schema(ns)
+            diff = compute_schema_diff(current_schema, new_schema)
+
+            result = BatchApplyResult(
+                namespace=ns_name,
+                success=False,  # Will be updated after apply
+                additions=len(diff.additions),
+                conflicts=len(diff.conflicts),
+            )
+
+            if diff.has_conflicts:
+                has_any_conflicts = True
+            if diff.has_changes:
+                has_any_changes = True
+
+            results.append(result)
+        except Exception as e:
+            results.append(BatchApplyResult(
+                namespace=ns_name,
+                success=False,
+                error=str(e),
+            ))
+
+    # Display summary table
+    console.print(f"[bold]Schema changes for {len(namespaces)} namespace(s):[/bold]\n")
+    display_batch_summary(results, dry_run=True)
+
+    # Check for conflicts
+    if has_any_conflicts:
+        console.print("\n[red]Error: Some namespaces have type conflicts.[/red]")
+        console.print("[red]Changing an existing attribute's type is not allowed.[/red]")
+        console.print("[dim]Fix conflicts before applying schema changes.[/dim]")
+        sys.exit(1)
+
+    # Check if there are any changes
+    if not has_any_changes:
+        console.print("\n[green]All namespaces are already up to date, no changes needed.[/green]")
+        return
+
+    # Dry run stops here
+    if dry_run:
+        console.print("\n[dim]Dry run mode - no changes applied[/dim]")
+        return
+
+    # Count how many namespaces will be updated
+    to_update = [r for r in results if r.additions > 0 and r.conflicts == 0 and r.error is None]
+
+    if not to_update:
+        console.print("\n[green]No namespaces need updates.[/green]")
+        return
+
+    # Confirm unless --yes
+    if not yes:
+        confirm = click.confirm(f"\nApply schema to {len(to_update)} namespace(s)?", default=False)
+        if not confirm:
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    # Phase 2: Apply schema to each namespace
+    console.print(f"\n[dim]Applying schema to {len(to_update)} namespace(s)...[/dim]\n")
+
+    success_count = 0
+    fail_count = 0
+
+    for result in results:
+        if result.additions == 0 or result.conflicts > 0 or result.error is not None:
+            continue
+
+        try:
+            ns = get_namespace(result.namespace, region)
+            ns.write(
+                upsert_rows=[{"id": "__schema_placeholder__"}],
+                schema=new_schema,
+            )
+            result.success = True
+            success_count += 1
+        except Exception as e:
+            result.success = False
+            result.error = str(e)
+            fail_count += 1
+
+    # Display final results
+    console.print("[bold]Results:[/bold]\n")
+    display_batch_summary(results, dry_run=False)
+
+    # Summary message
+    if fail_count == 0:
+        console.print(f"\n[green]Successfully applied schema to {success_count} namespace(s)[/green]")
+    else:
+        console.print(f"\n[yellow]Applied schema to {success_count} namespace(s), {fail_count} failed[/yellow]")
+        sys.exit(1)
+
+
+@schema.command("apply", context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("-n", "--namespace", help="Target namespace to apply schema to")
+@click.option("--prefix", help="Apply to all namespaces matching this prefix")
+@click.option("-f", "--file", "schema_file", required=True, help="JSON file containing schema definition")
+@click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")
+@click.option("--dry-run", is_flag=True, help="Show diff only, don't apply changes")
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def schema_apply(
+    ctx: click.Context,
+    namespace: str | None,
+    prefix: str | None,
+    schema_file: str,
+    region: str | None,
+    dry_run: bool,
+    yes: bool,
+) -> None:
+    """Apply a schema from a JSON file to namespace(s).
+
+    Shows a diff of schema changes before applying. Type changes to existing
+    attributes are not allowed and will be flagged as conflicts.
+
+    Use -n/--namespace for a single namespace, or --prefix to apply to all
+    namespaces matching a prefix.
+    """
+    # Validate options: must have exactly one of namespace or prefix
+    if namespace and prefix:
+        console.print("[red]Error: Cannot use both --namespace and --prefix[/red]")
+        console.print("[dim]Use -n/--namespace for a single namespace, or --prefix for batch apply[/dim]")
+        sys.exit(1)
+
+    if not namespace and not prefix:
+        console.print("[red]Error: Must specify either --namespace or --prefix[/red]")
+        console.print("[dim]Use -n/--namespace for a single namespace, or --prefix for batch apply[/dim]")
+        sys.exit(1)
+
+    # Load schema from file
+    new_schema = load_schema_file(schema_file)
+
+    if not new_schema:
+        console.print("[yellow]Schema file is empty, nothing to apply[/yellow]")
+        return
+
+    if namespace:
+        # Single namespace mode
+        apply_schema_to_single_namespace(namespace, new_schema, region, dry_run, yes)
+    else:
+        # Prefix mode - batch apply
+        assert prefix is not None
+        namespaces = list_namespaces_by_prefix(prefix, region)
+
+        if not namespaces:
+            console.print(f"[yellow]No namespaces found matching prefix: {prefix}[/yellow]")
+            return
+
+        console.print(f"[dim]Found {len(namespaces)} namespace(s) matching prefix '{prefix}'[/dim]")
+        apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes)
 
 
 def get_namespace_row_count(ns) -> int | None:

@@ -515,3 +515,181 @@ class TestSchemaCopyCommand:
         assert result.exit_code == 0
         assert "Successfully created" in result.output
         target_mock.write.assert_called_once()
+
+
+class TestSchemaApplyBatchCommand:
+    """Tests for schema apply CLI command with --prefix option."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def valid_schema_file(self, tmp_path):
+        """Create a valid schema file for testing."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "string", "category": "string"}')
+        return str(schema_file)
+
+    def test_prefix_requires_no_namespace(self, runner, valid_schema_file):
+        """Test that --prefix and --namespace cannot be used together."""
+        result = runner.invoke(
+            schema,
+            ["apply", "-n", "test-ns", "--prefix", "prod", "-f", valid_schema_file],
+        )
+
+        assert result.exit_code == 1
+        assert "Cannot use both" in result.output
+
+    def test_requires_namespace_or_prefix(self, runner, valid_schema_file):
+        """Test that either --namespace or --prefix is required."""
+        result = runner.invoke(
+            schema, ["apply", "-f", valid_schema_file]
+        )
+
+        assert result.exit_code == 1
+        assert "Must specify either" in result.output
+
+    def test_prefix_no_matching_namespaces(self, runner, valid_schema_file):
+        """Test that prefix with no matches shows appropriate message."""
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = []
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            result = runner.invoke(
+                schema, ["apply", "--prefix", "nonexistent", "-f", valid_schema_file]
+            )
+
+        assert result.exit_code == 0
+        assert "No namespaces found matching prefix" in result.output
+
+    def test_prefix_dry_run_multiple_namespaces(self, runner, valid_schema_file):
+        """Test dry run with prefix showing summary of multiple namespaces."""
+        # Mock namespaces
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "prod-orders"
+        mock_ns3 = MagicMock()
+        mock_ns3.id = "test-ns"  # Won't match prefix
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2, mock_ns3]
+
+        # Mock metadata for each namespace
+        def mock_get_ns(name, region=None):
+            mock = MagicMock()
+            mock_metadata = MagicMock()
+            mock_metadata.schema = {"content": "string"}  # Existing schema
+            mock.metadata.return_value = mock_metadata
+            return mock
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", valid_schema_file, "--dry-run"]
+                )
+
+        assert result.exit_code == 0
+        assert "Found 2 namespace(s)" in result.output
+        assert "prod-users" in result.output
+        assert "prod-orders" in result.output
+        assert "test-ns" not in result.output
+        assert "Dry run mode" in result.output
+
+    def test_prefix_apply_with_yes(self, runner, valid_schema_file):
+        """Test batch apply with --yes flag."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "prod-orders"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                mock_metadata.schema = {}  # Empty schema (new namespaces)
+                mock.metadata.return_value = mock_metadata
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", valid_schema_file, "--yes"]
+                )
+
+        assert result.exit_code == 0
+        assert "Successfully applied schema to 2 namespace(s)" in result.output
+        # Verify both namespaces had write called
+        for mock in namespace_mocks.values():
+            mock.write.assert_called_once()
+
+    def test_prefix_conflicts_block_all(self, runner, tmp_path):
+        """Test that conflicts in any namespace prevent all applies."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64"}')  # Change type
+
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1]
+
+        def mock_get_ns(name, region=None):
+            mock = MagicMock()
+            mock_metadata = MagicMock()
+            mock_metadata.schema = {"content": "string"}  # Existing type differs
+            mock.metadata.return_value = mock_metadata
+            return mock
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", str(schema_file), "--yes"]
+                )
+
+        assert result.exit_code == 1
+        assert "type conflict" in result.output.lower()
+
+    def test_prefix_some_namespaces_up_to_date(self, runner, valid_schema_file):
+        """Test batch apply where some namespaces are already up to date."""
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "prod-orders"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                # prod-users already has the schema
+                if name == "prod-users":
+                    mock_metadata.schema = {"content": "string", "category": "string"}
+                else:
+                    mock_metadata.schema = {}  # prod-orders needs update
+                mock.metadata.return_value = mock_metadata
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", valid_schema_file, "--yes"]
+                )
+
+        assert result.exit_code == 0
+        # Only prod-orders should have write called (1 namespace updated)
+        assert "Successfully applied schema to 1 namespace(s)" in result.output
+        namespace_mocks["prod-orders"].write.assert_called_once()
+        namespace_mocks["prod-users"].write.assert_not_called()
