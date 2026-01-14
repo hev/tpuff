@@ -807,3 +807,169 @@ class TestSchemaApplyAllCommand:
         assert "Successfully applied schema to 2 namespace(s)" in result.output
         namespace_mocks["prod-users"].write.assert_called_once()
         namespace_mocks["test-ns"].write.assert_called_once()
+
+
+class TestSchemaApplyContinueOnError:
+    """Tests for schema apply CLI command with --continue-on-error option."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_conflicts_without_continue_on_error_exits(self, runner, tmp_path):
+        """Test that conflicts cause exit without --continue-on-error."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64"}')  # Type change
+
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1]
+
+        def mock_get_ns(name, region=None):
+            mock = MagicMock()
+            mock_metadata = MagicMock()
+            mock_metadata.schema = {"content": "string"}  # Existing type differs
+            mock.metadata.return_value = mock_metadata
+            return mock
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", str(schema_file), "--yes"]
+                )
+
+        assert result.exit_code == 1
+        assert "type conflict" in result.output.lower()
+        assert "continue-on-error" in result.output.lower()
+
+    def test_conflicts_with_continue_on_error_skips_conflicted(self, runner, tmp_path):
+        """Test that --continue-on-error skips namespaces with conflicts."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64", "new_field": "string"}')
+
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "prod-users"  # Will have conflict
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "prod-orders"  # Will be applied
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                if name == "prod-users":
+                    # This namespace has a type conflict (content: string -> uint64)
+                    mock_metadata.schema = {"content": "string"}
+                else:
+                    # This namespace has no conflicts (new namespace)
+                    mock_metadata.schema = {}
+                mock.metadata.return_value = mock_metadata
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "prod", "-f", str(schema_file), "--yes", "--continue-on-error"]
+                )
+
+        assert result.exit_code == 0
+        assert "Warning" in result.output  # Warning about conflicts
+        assert "Successfully applied schema to 1 namespace(s)" in result.output
+        # Only prod-orders should have write called
+        namespace_mocks["prod-orders"].write.assert_called_once()
+        namespace_mocks["prod-users"].write.assert_not_called()
+
+    def test_continue_on_error_with_all_flag(self, runner, tmp_path):
+        """Test --continue-on-error works with --all flag."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64"}')
+
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "ns-with-conflict"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "ns-new"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        namespace_mocks = {}
+
+        def mock_get_ns(name, region=None):
+            if name not in namespace_mocks:
+                mock = MagicMock()
+                mock_metadata = MagicMock()
+                if name == "ns-with-conflict":
+                    mock_metadata.schema = {"content": "string"}  # Conflict
+                else:
+                    mock_metadata.schema = {}  # No conflict
+                mock.metadata.return_value = mock_metadata
+                namespace_mocks[name] = mock
+            return namespace_mocks[name]
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--all", "-f", str(schema_file), "--yes", "--continue-on-error"]
+                )
+
+        assert result.exit_code == 0
+        assert "Warning" in result.output
+        namespace_mocks["ns-new"].write.assert_called_once()
+        namespace_mocks["ns-with-conflict"].write.assert_not_called()
+
+    def test_continue_on_error_all_have_conflicts(self, runner, tmp_path):
+        """Test --continue-on-error when all namespaces have conflicts."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64"}')
+
+        mock_ns1 = MagicMock()
+        mock_ns1.id = "ns1"
+        mock_ns2 = MagicMock()
+        mock_ns2.id = "ns2"
+
+        mock_client = MagicMock()
+        mock_client.namespaces.return_value = [mock_ns1, mock_ns2]
+
+        def mock_get_ns(name, region=None):
+            mock = MagicMock()
+            mock_metadata = MagicMock()
+            mock_metadata.schema = {"content": "string"}  # All have conflicts
+            mock.metadata.return_value = mock_metadata
+            return mock
+
+        with patch("tpuff.commands.schema.get_turbopuffer_client", return_value=mock_client):
+            with patch("tpuff.commands.schema.get_namespace", side_effect=mock_get_ns):
+                result = runner.invoke(
+                    schema, ["apply", "--prefix", "ns", "-f", str(schema_file), "--yes", "--continue-on-error"]
+                )
+
+        # Should exit successfully but with no updates
+        assert result.exit_code == 0
+        assert "Warning" in result.output
+        assert "No namespaces need updates" in result.output
+
+    def test_continue_on_error_ignored_for_single_namespace(self, runner, tmp_path):
+        """Test that --continue-on-error has no effect for single namespace mode."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"content": "uint64"}')
+
+        mock_ns = MagicMock()
+        mock_metadata = MagicMock()
+        mock_metadata.schema = {"content": "string"}  # Type conflict
+        mock_ns.metadata.return_value = mock_metadata
+
+        with patch("tpuff.commands.schema.get_namespace", return_value=mock_ns):
+            result = runner.invoke(
+                schema, ["apply", "-n", "test-ns", "-f", str(schema_file), "--continue-on-error"]
+            )
+
+        # Single namespace mode should still fail on conflicts
+        assert result.exit_code == 1
+        assert "type change not allowed" in result.output.lower()

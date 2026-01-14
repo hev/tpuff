@@ -501,6 +501,7 @@ def apply_schema_to_multiple_namespaces(
     region: str | None,
     dry_run: bool,
     yes: bool,
+    continue_on_error: bool = False,
 ) -> None:
     """Apply schema to multiple namespaces with batch summary display.
 
@@ -510,6 +511,7 @@ def apply_schema_to_multiple_namespaces(
         region: Optional region override
         dry_run: If True, only show what would change
         yes: If True, skip confirmation prompt
+        continue_on_error: If True, skip namespaces with conflicts instead of aborting
     """
     # Phase 1: Compute diffs for all namespaces
     results: list[BatchApplyResult] = []
@@ -550,10 +552,14 @@ def apply_schema_to_multiple_namespaces(
 
     # Check for conflicts
     if has_any_conflicts:
-        console.print("\n[red]Error: Some namespaces have type conflicts.[/red]")
-        console.print("[red]Changing an existing attribute's type is not allowed.[/red]")
-        console.print("[dim]Fix conflicts before applying schema changes.[/dim]")
-        sys.exit(1)
+        if continue_on_error:
+            console.print("\n[yellow]Warning: Some namespaces have type conflicts and will be skipped.[/yellow]")
+            console.print("[dim]Use --dry-run to see which namespaces have conflicts.[/dim]")
+        else:
+            console.print("\n[red]Error: Some namespaces have type conflicts.[/red]")
+            console.print("[red]Changing an existing attribute's type is not allowed.[/red]")
+            console.print("[dim]Fix conflicts or use --continue-on-error to skip them.[/dim]")
+            sys.exit(1)
 
     # Check if there are any changes
     if not has_any_changes:
@@ -622,6 +628,7 @@ def apply_schema_to_multiple_namespaces(
 @click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")
 @click.option("--dry-run", is_flag=True, help="Show diff only, don't apply changes")
 @click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
+@click.option("--continue-on-error", is_flag=True, help="Continue applying to other namespaces when conflicts occur (batch mode only)")
 @click.pass_context
 def schema_apply(
     ctx: click.Context,
@@ -632,6 +639,7 @@ def schema_apply(
     region: str | None,
     dry_run: bool,
     yes: bool,
+    continue_on_error: bool,
 ) -> None:
     """Apply a schema from a JSON file to namespace(s).
 
@@ -673,7 +681,7 @@ def schema_apply(
             return
 
         console.print(f"[dim]Found {len(namespaces)} namespace(s) matching prefix '{prefix}'[/dim]")
-        apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes)
+        apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes, continue_on_error)
     else:
         # All namespaces mode
         namespaces = list_all_namespaces(region)
@@ -683,7 +691,7 @@ def schema_apply(
             return
 
         console.print(f"[dim]Found {len(namespaces)} namespace(s)[/dim]")
-        apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes)
+        apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes, continue_on_error)
 
 
 def get_namespace_row_count(ns) -> int | None:
