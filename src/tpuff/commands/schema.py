@@ -1,6 +1,7 @@
 """Schema management commands for tpuff CLI."""
 
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 
@@ -10,6 +11,15 @@ from rich.console import Console
 from tpuff.client import get_namespace
 
 console = Console()
+
+# Valid simple schema types
+VALID_SIMPLE_TYPES = {"string", "uint64", "uuid", "bool"}
+
+# Regex for vector types: [dims]f32 or [dims]f16
+VECTOR_TYPE_PATTERN = re.compile(r"^\[\d+\]f(16|32)$")
+
+# Valid keys for complex type objects
+VALID_TYPE_KEYS = {"type", "full_text_search", "regex_index", "filterable"}
 
 
 @dataclass
@@ -201,6 +211,89 @@ def schema_get(
         sys.exit(1)
 
 
+def validate_schema_type(attr_name: str, attr_type: object) -> list[str]:
+    """Validate a single schema attribute type.
+
+    Args:
+        attr_name: The attribute name (for error messages)
+        attr_type: The attribute type to validate
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    if isinstance(attr_type, str):
+        # Simple string type
+        if attr_type in VALID_SIMPLE_TYPES:
+            return []
+        if VECTOR_TYPE_PATTERN.match(attr_type):
+            return []
+        errors.append(
+            f"Attribute '{attr_name}': invalid type '{attr_type}'. "
+            f"Valid types: {', '.join(sorted(VALID_SIMPLE_TYPES))}, or vector format [dims]f32/f16"
+        )
+    elif isinstance(attr_type, dict):
+        # Complex type object
+        if "type" not in attr_type:
+            errors.append(f"Attribute '{attr_name}': complex type object must have a 'type' key")
+        else:
+            base_type = attr_type["type"]
+            if not isinstance(base_type, str):
+                errors.append(f"Attribute '{attr_name}': 'type' must be a string")
+            elif base_type not in VALID_SIMPLE_TYPES and not VECTOR_TYPE_PATTERN.match(base_type):
+                errors.append(
+                    f"Attribute '{attr_name}': invalid base type '{base_type}'. "
+                    f"Valid types: {', '.join(sorted(VALID_SIMPLE_TYPES))}, or vector format [dims]f32/f16"
+                )
+
+        # Check for unknown keys
+        unknown_keys = set(attr_type.keys()) - VALID_TYPE_KEYS
+        if unknown_keys:
+            errors.append(
+                f"Attribute '{attr_name}': unknown keys {sorted(unknown_keys)}. "
+                f"Valid keys: {', '.join(sorted(VALID_TYPE_KEYS))}"
+            )
+
+        # Validate specific option types
+        if "full_text_search" in attr_type and not isinstance(attr_type["full_text_search"], bool):
+            errors.append(f"Attribute '{attr_name}': 'full_text_search' must be a boolean")
+        if "regex_index" in attr_type and not isinstance(attr_type["regex_index"], bool):
+            errors.append(f"Attribute '{attr_name}': 'regex_index' must be a boolean")
+        if "filterable" in attr_type and not isinstance(attr_type["filterable"], bool):
+            errors.append(f"Attribute '{attr_name}': 'filterable' must be a boolean")
+    else:
+        errors.append(
+            f"Attribute '{attr_name}': type must be a string or object, got {type(attr_type).__name__}"
+        )
+
+    return errors
+
+
+def validate_schema(schema_data: dict) -> list[str]:
+    """Validate a complete schema dictionary.
+
+    Args:
+        schema_data: The schema dictionary to validate
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors = []
+
+    for attr_name, attr_type in schema_data.items():
+        if not isinstance(attr_name, str):
+            errors.append(f"Attribute name must be a string, got {type(attr_name).__name__}")
+            continue
+        if not attr_name:
+            errors.append("Attribute name cannot be empty")
+            continue
+
+        errors.extend(validate_schema_type(attr_name, attr_type))
+
+    return errors
+
+
 def load_schema_file(file_path: str) -> dict[str, object]:
     """Load and validate a schema from a JSON file.
 
@@ -211,7 +304,7 @@ def load_schema_file(file_path: str) -> dict[str, object]:
         The parsed schema dictionary
 
     Raises:
-        click.ClickException: If file cannot be read or parsed
+        click.ClickException: If file cannot be read, parsed, or is invalid
     """
     try:
         with open(file_path) as f:
@@ -223,6 +316,12 @@ def load_schema_file(file_path: str) -> dict[str, object]:
 
     if not isinstance(schema_data, dict):
         raise click.ClickException("Schema file must contain a JSON object")
+
+    # Validate schema structure and types
+    errors = validate_schema(schema_data)
+    if errors:
+        error_msg = "Invalid schema:\n  " + "\n  ".join(errors)
+        raise click.ClickException(error_msg)
 
     return schema_data
 
