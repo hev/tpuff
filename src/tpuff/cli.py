@@ -9,6 +9,7 @@ from tpuff.commands.delete import delete
 from tpuff.commands.edit import edit
 from tpuff.commands.get import get
 from tpuff.commands.export import export
+from tpuff.commands.schema import schema
 
 
 # Context settings to enable -h as help alias for all commands
@@ -35,6 +36,7 @@ cli.add_command(edit)
 cli.add_command(get)
 cli.add_command(export)
 cli.add_command(export, name="metrics")  # alias
+cli.add_command(schema)
 
 
 def main() -> None:
