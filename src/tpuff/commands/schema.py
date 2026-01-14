@@ -9,7 +9,6 @@ from rich.console import Console
 
 from tpuff.client import get_namespace
 
-
 console = Console()
 
 
@@ -64,6 +63,42 @@ def schema_type_for_display(attr_type: object) -> str:
         return json.dumps(attr_type)
     else:
         return str(attr_type)
+
+
+def display_schema_diff(diff: SchemaDiff, namespace: str) -> None:
+    """Display a schema diff with Rich formatting.
+
+    Args:
+        diff: The computed schema diff
+        namespace: The namespace name (for header)
+    """
+    console.print(f"\n[bold]Schema changes for namespace: {namespace}[/bold]\n")
+
+    if not diff.has_changes and not diff.unchanged:
+        console.print("[dim]No schema attributes[/dim]")
+        return
+
+    # Sort all attributes for consistent output
+    all_attrs = sorted(
+        set(diff.unchanged.keys()) | set(diff.additions.keys()) | set(diff.conflicts.keys())
+    )
+
+    for attr in all_attrs:
+        if attr in diff.unchanged:
+            # Unchanged attribute
+            console.print(f"  {attr}: {diff.unchanged[attr]}")
+        elif attr in diff.additions:
+            # New attribute
+            console.print(f"[green]+{attr}: {diff.additions[attr]}[/green]  [dim](new)[/dim]")
+        elif attr in diff.conflicts:
+            # Type conflict
+            old_type, new_type = diff.conflicts[attr]
+            console.print(
+                f"[red]!{attr}: {old_type} -> {new_type}[/red]  "
+                f"[dim](type change not allowed)[/dim]"
+            )
+
+    console.print()  # Blank line at end
 
 
 def compute_schema_diff(
