@@ -358,3 +358,160 @@ class TestSchemaApplyCommand:
         assert result.exit_code == 0
         assert "Aborted" in result.output
         mock_ns.write.assert_not_called()
+
+
+class TestSchemaCopyCommand:
+    """Tests for schema copy CLI command."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_copy_source_not_found(self, runner):
+        """Test error when source namespace doesn't exist."""
+        mock_ns = MagicMock()
+        mock_ns.metadata.side_effect = Exception("Namespace not found")
+
+        with patch("tpuff.commands.schema.get_namespace", return_value=mock_ns):
+            result = runner.invoke(
+                schema, ["copy", "-n", "source-ns", "--to", "target-ns"]
+            )
+
+        assert result.exit_code == 1
+        assert "no schema or does not exist" in result.output.lower()
+
+    def test_copy_target_has_data(self, runner):
+        """Test error when target namespace already has data."""
+        # Source namespace has schema
+        source_metadata = MagicMock()
+        source_metadata.schema = {"content": "string"}
+
+        # Target namespace has data
+        target_metadata = MagicMock()
+        target_metadata.schema = {"content": "string"}
+        target_metadata.approx_count = 100
+
+        def get_ns(name, region=None):
+            mock = MagicMock()
+            if name == "source-ns":
+                mock.metadata.return_value = source_metadata
+            else:
+                mock.metadata.return_value = target_metadata
+            return mock
+
+        with patch("tpuff.commands.schema.get_namespace", side_effect=get_ns):
+            result = runner.invoke(
+                schema, ["copy", "-n", "source-ns", "--to", "target-ns"]
+            )
+
+        assert result.exit_code == 1
+        assert "already has" in result.output.lower()
+        assert "100" in result.output
+
+    def test_copy_success_with_yes(self, runner):
+        """Test successful copy with --yes flag."""
+        source_metadata = MagicMock()
+        source_metadata.schema = {"content": "string", "timestamp": "uint64"}
+
+        # Target namespace doesn't exist (metadata raises exception)
+        target_mock = MagicMock()
+        target_mock.metadata.side_effect = Exception("Namespace not found")
+
+        def get_ns(name, region=None):
+            if name == "source-ns":
+                mock = MagicMock()
+                mock.metadata.return_value = source_metadata
+                return mock
+            else:
+                return target_mock
+
+        with patch("tpuff.commands.schema.get_namespace", side_effect=get_ns):
+            result = runner.invoke(
+                schema, ["copy", "-n", "source-ns", "--to", "target-ns", "--yes"]
+            )
+
+        assert result.exit_code == 0
+        assert "Successfully created" in result.output
+        target_mock.write.assert_called_once()
+        call_kwargs = target_mock.write.call_args[1]
+        assert call_kwargs["schema"] == {"content": "string", "timestamp": "uint64"}
+        assert call_kwargs["upsert_rows"] == [{"id": "__schema_placeholder__"}]
+
+    def test_copy_aborts_on_no(self, runner):
+        """Test that copy aborts when user says no."""
+        source_metadata = MagicMock()
+        source_metadata.schema = {"content": "string"}
+
+        # Target namespace doesn't exist
+        target_mock = MagicMock()
+        target_mock.metadata.side_effect = Exception("Namespace not found")
+
+        def get_ns(name, region=None):
+            if name == "source-ns":
+                mock = MagicMock()
+                mock.metadata.return_value = source_metadata
+                return mock
+            else:
+                return target_mock
+
+        with patch("tpuff.commands.schema.get_namespace", side_effect=get_ns):
+            result = runner.invoke(
+                schema, ["copy", "-n", "source-ns", "--to", "target-ns"], input="n\n"
+            )
+
+        assert result.exit_code == 0
+        assert "Aborted" in result.output
+        target_mock.write.assert_not_called()
+
+    def test_copy_displays_schema(self, runner):
+        """Test that copy displays the schema being copied."""
+        source_metadata = MagicMock()
+        source_metadata.schema = {"content": "string", "vector": "[1536]f32"}
+
+        # Target namespace doesn't exist
+        target_mock = MagicMock()
+        target_mock.metadata.side_effect = Exception("Namespace not found")
+
+        def get_ns(name, region=None):
+            if name == "source-ns":
+                mock = MagicMock()
+                mock.metadata.return_value = source_metadata
+                return mock
+            else:
+                return target_mock
+
+        with patch("tpuff.commands.schema.get_namespace", side_effect=get_ns):
+            result = runner.invoke(
+                schema, ["copy", "-n", "source-ns", "--to", "target-ns"], input="n\n"
+            )
+
+        assert "source-ns" in result.output
+        assert "target-ns" in result.output
+        assert "content" in result.output
+        assert "vector" in result.output
+        assert "placeholder row" in result.output.lower()
+
+    def test_copy_target_does_not_exist(self, runner):
+        """Test copy when target namespace doesn't exist (metadata fails)."""
+        source_metadata = MagicMock()
+        source_metadata.schema = {"content": "string"}
+
+        target_mock = MagicMock()
+        target_mock.metadata.side_effect = Exception("Namespace not found")
+
+        def get_ns(name, region=None):
+            if name == "source-ns":
+                mock = MagicMock()
+                mock.metadata.return_value = source_metadata
+                return mock
+            else:
+                return target_mock
+
+        with patch("tpuff.commands.schema.get_namespace", side_effect=get_ns):
+            result = runner.invoke(
+                schema, ["copy", "-n", "source-ns", "--to", "target-ns", "--yes"]
+            )
+
+        assert result.exit_code == 0
+        assert "Successfully created" in result.output
+        target_mock.write.assert_called_once()

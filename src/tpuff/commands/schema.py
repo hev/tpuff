@@ -427,3 +427,99 @@ def schema_apply(
     except Exception as e:
         console.print(f"[red]Error applying schema: {e}[/red]")
         sys.exit(1)
+
+
+def get_namespace_row_count(ns) -> int | None:
+    """Get the row count for a namespace.
+
+    Args:
+        ns: The turbopuffer namespace object
+
+    Returns:
+        The number of rows, or None if namespace doesn't exist
+    """
+    try:
+        metadata = ns.metadata()
+        return metadata.approx_count if hasattr(metadata, "approx_count") else 0
+    except Exception:
+        return None
+
+
+def display_schema_for_copy(schema_dict: dict[str, object], source: str, target: str) -> None:
+    """Display the schema that will be copied.
+
+    Args:
+        schema_dict: The schema dictionary
+        source: Source namespace name
+        target: Target namespace name
+    """
+    console.print(f"\n[bold]Copying schema from:[/bold] {source}")
+    console.print(f"[bold]Creating namespace: [/bold] {target}")
+    console.print("\n[bold]Schema:[/bold]")
+
+    if not schema_dict:
+        console.print("[dim]  (no schema attributes)[/dim]")
+    else:
+        for attr, attr_type in sorted(schema_dict.items()):
+            type_display = schema_type_for_display(attr_type)
+            console.print(f"  {attr}: {type_display}")
+
+    console.print("\n[dim]Note: A placeholder row will be created to initialize the namespace.[/dim]\n")
+
+
+@schema.command("copy", context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("-n", "--namespace", required=True, help="Source namespace to copy schema from")
+@click.option("--to", "target", required=True, help="Target namespace name (must not exist or be empty)")
+@click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def schema_copy(
+    ctx: click.Context,
+    namespace: str,
+    target: str,
+    region: str | None,
+    yes: bool,
+) -> None:
+    """Copy schema from a source namespace to a new target namespace.
+
+    The target namespace must be empty or non-existent. A placeholder row
+    will be created to initialize the namespace with the schema.
+    """
+    # Get source namespace and schema
+    source_ns = get_namespace(namespace, region)
+    source_schema = get_current_schema(source_ns)
+
+    if source_schema is None:
+        console.print(f"[red]Error: Source namespace '{namespace}' has no schema or does not exist[/red]")
+        sys.exit(1)
+
+    # Check target namespace
+    target_ns = get_namespace(target, region)
+    target_row_count = get_namespace_row_count(target_ns)
+
+    if target_row_count is not None and target_row_count > 0:
+        console.print(f"[red]Error: Target namespace '{target}' already has {target_row_count} row(s)[/red]")
+        console.print("[red]Target namespace must be empty or non-existent[/red]")
+        sys.exit(1)
+
+    # Display what will be copied
+    display_schema_for_copy(source_schema, namespace, target)
+
+    # Confirm unless --yes
+    if not yes:
+        confirm = click.confirm("Copy schema to target namespace?", default=False)
+        if not confirm:
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    # Create target namespace with schema
+    try:
+        console.print(f"[dim]Creating namespace {target} with schema...[/dim]")
+        target_ns.write(
+            upsert_rows=[{"id": "__schema_placeholder__"}],
+            schema=source_schema,
+        )
+        console.print(f"[green]Successfully created namespace '{target}' with schema from '{namespace}'[/green]")
+    except Exception as e:
+        console.print(f"[red]Error creating namespace: {e}[/red]")
+        sys.exit(1)
