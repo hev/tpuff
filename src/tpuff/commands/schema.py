@@ -2,6 +2,7 @@
 
 import json
 import sys
+from dataclasses import dataclass, field
 
 import click
 from rich.console import Console
@@ -10,6 +11,102 @@ from tpuff.client import get_namespace
 
 
 console = Console()
+
+
+@dataclass
+class SchemaDiff:
+    """Result of comparing two schemas."""
+
+    unchanged: dict[str, str] = field(default_factory=dict)
+    additions: dict[str, str] = field(default_factory=dict)
+    conflicts: dict[str, tuple[str, str]] = field(default_factory=dict)  # attr -> (old_type, new_type)
+
+    @property
+    def has_conflicts(self) -> bool:
+        """Check if there are any type conflicts."""
+        return len(self.conflicts) > 0
+
+    @property
+    def has_changes(self) -> bool:
+        """Check if there are any additions or conflicts."""
+        return len(self.additions) > 0 or len(self.conflicts) > 0
+
+
+def normalize_schema_type(attr_type: object) -> str:
+    """Normalize a schema type to a comparable string representation.
+
+    Handles both simple string types and complex type objects from turbopuffer.
+    """
+    if hasattr(attr_type, "model_dump"):
+        # Pydantic model - convert to JSON string for comparison
+        return json.dumps(attr_type.model_dump(), sort_keys=True)
+    elif hasattr(attr_type, "to_dict"):
+        return json.dumps(attr_type.to_dict(), sort_keys=True)
+    elif isinstance(attr_type, dict):
+        return json.dumps(attr_type, sort_keys=True)
+    else:
+        return str(attr_type)
+
+
+def schema_type_for_display(attr_type: object) -> str:
+    """Convert a schema type to a human-readable display string."""
+    if hasattr(attr_type, "model_dump"):
+        dumped = attr_type.model_dump()
+        # For complex types, show the full dict; for simple, just the string
+        if isinstance(dumped, dict) and len(dumped) == 1 and "type" in dumped:
+            return str(dumped["type"])
+        return json.dumps(dumped)
+    elif hasattr(attr_type, "to_dict"):
+        return json.dumps(attr_type.to_dict())
+    elif isinstance(attr_type, dict):
+        if len(attr_type) == 1 and "type" in attr_type:
+            return str(attr_type["type"])
+        return json.dumps(attr_type)
+    else:
+        return str(attr_type)
+
+
+def compute_schema_diff(
+    current_schema: dict[str, object] | None,
+    new_schema: dict[str, object],
+) -> SchemaDiff:
+    """Compute the difference between current and new schemas.
+
+    Args:
+        current_schema: The existing schema (None if namespace doesn't exist)
+        new_schema: The schema to be applied
+
+    Returns:
+        SchemaDiff with unchanged, additions, and conflicts
+    """
+    diff = SchemaDiff()
+
+    if current_schema is None:
+        current_schema = {}
+
+    # Normalize current schema for comparison
+    current_normalized = {
+        attr: normalize_schema_type(attr_type)
+        for attr, attr_type in current_schema.items()
+    }
+
+    # Compare each attribute in the new schema
+    for attr, new_type in new_schema.items():
+        new_type_normalized = normalize_schema_type(new_type)
+        new_type_display = schema_type_for_display(new_type)
+
+        if attr not in current_normalized:
+            # New attribute
+            diff.additions[attr] = new_type_display
+        elif current_normalized[attr] == new_type_normalized:
+            # Unchanged
+            diff.unchanged[attr] = new_type_display
+        else:
+            # Type conflict
+            old_type_display = schema_type_for_display(current_schema[attr])
+            diff.conflicts[attr] = (old_type_display, new_type_display)
+
+    return diff
 
 
 @click.group("schema", context_settings={"help_option_names": ["-h", "--help"]})
