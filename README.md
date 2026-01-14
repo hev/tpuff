@@ -1,12 +1,12 @@
 # Turbopuffer CLI (tpuff)
 
-A TypeScript CLI for interacting with turbopuffer. This tool allows you to list and filter namespaces, browse namespace data, perform full-text search, and export metrics to Prometheus.
+A Python CLI for interacting with turbopuffer. This tool allows you to list and filter namespaces, browse namespace data, perform full-text search, and export metrics to Prometheus.
 
 ## Prerequisites
 
-- Node.js 20+
+- Python 3.10+
+- [UV](https://docs.astral.sh/uv/) package manager (recommended)
 - A turbopuffer API key
-- Docker (optional, required for Python-only embedding models and/or exporter)
 
 Set the following environment variables:
 - `TURBOPUFFER_API_KEY`: Your turbopuffer API key
@@ -14,16 +14,29 @@ Set the following environment variables:
 
 ## Installation
 
-Install globally via npm or bun:
+### Using UV (recommended)
 
+Install UV if you haven't already:
 ```bash
-npm install -g tpuff-cli
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-or 
+Install tpuff as a global tool:
+```bash
+uv tool install tpuff
+```
+
+Or install from source:
+```bash
+git clone https://github.com/hev/tpuff
+cd tpuff
+uv sync
+```
+
+### Using pip
 
 ```bash
-bun add -g tpuff-cli
+pip install tpuff
 ```
 
 Then use the `tpuff` command directly:
@@ -65,20 +78,9 @@ tpuff ls -A
 Search for documents in a namespace using vector similarity or full-text search.
 
 **Vector similarity search:**
-Xenova models allow for local embedding generation in typescript. 
-
-```bash
-tpuff search "your query text" -n my-namespace -m Xenova/all-MiniLM-L6-v2
-```
-
-**Using Python-only models (automatic Docker support):**
 ```bash
 tpuff search "your query text" -n my-namespace -m sentence-transformers/all-MiniLM-L6-v2
 ```
-
-The CLI automatically detects Python-only models and uses Docker to run a container to do embeddings On first use, it will pull the Docker image and start the container automatically.
-
-See [DOCKER.md](./DOCKER.md) for detailed documentation on how it works, manual management, and troubleshooting.
 
 **Full-text search (BM25):**
 ```bash
@@ -124,6 +126,23 @@ tpuff edit <document-id> -n my-namespace
 ```
 This will open the document in vim. Save and quit (`:wq`) to upsert changes, or quit without saving (`:q!`) to cancel.
 
+## Development
+
+```bash
+# Clone and setup
+git clone https://github.com/hev/tpuff
+cd tpuff
+uv sync
+
+# Run in development
+uv run tpuff --help
+
+# Run tests
+uv run pytest
+
+# Build package
+uv build
+```
 
 ## Monitoring & Observability
 
@@ -144,4 +163,3 @@ See [monitoring.md](./monitoring.md) for detailed instructions on:
 - Namespace backup and restore (to s3 or file)
 - Filterable property management
 - Feedback welcome (file an issue)
-

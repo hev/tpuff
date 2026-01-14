@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tpuff"
+version = "0.4.0"
+description = "CLI tool for Turbopuffer vector database"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "hev" }
+]
+keywords = ["turbopuffer", "vector", "database", "cli", "embeddings"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "click>=8.1.0",
+    "turbopuffer>=0.2.0",
+    "sentence-transformers>=2.2.0",
+    "rich>=13.0.0",
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+tpuff = "tpuff.cli:main"
+tpuf = "tpuff.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/hev/tpuff"
+Repository = "https://github.com/hev/tpuff"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tpuff"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
