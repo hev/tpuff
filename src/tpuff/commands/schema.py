@@ -199,3 +199,132 @@ def schema_get(
         else:
             console.print(f"[red]Error: {e}[/red]")
         sys.exit(1)
+
+
+def load_schema_file(file_path: str) -> dict[str, object]:
+    """Load and validate a schema from a JSON file.
+
+    Args:
+        file_path: Path to the JSON schema file
+
+    Returns:
+        The parsed schema dictionary
+
+    Raises:
+        click.ClickException: If file cannot be read or parsed
+    """
+    try:
+        with open(file_path) as f:
+            schema_data = json.load(f)
+    except FileNotFoundError:
+        raise click.ClickException(f"Schema file not found: {file_path}")
+    except json.JSONDecodeError as e:
+        raise click.ClickException(f"Invalid JSON in schema file: {e}")
+
+    if not isinstance(schema_data, dict):
+        raise click.ClickException("Schema file must contain a JSON object")
+
+    return schema_data
+
+
+def get_current_schema(ns) -> dict[str, object] | None:
+    """Get the current schema from a namespace.
+
+    Args:
+        ns: The turbopuffer namespace object
+
+    Returns:
+        The schema dict, or None if namespace doesn't exist/has no schema
+    """
+    try:
+        metadata = ns.metadata()
+        schema_data = metadata.schema if hasattr(metadata, "schema") else None
+        if not schema_data:
+            return None
+
+        # Convert to plain dict for comparison
+        result = {}
+        for attr_name, attr_type in schema_data.items():
+            if hasattr(attr_type, "model_dump"):
+                result[attr_name] = attr_type.model_dump()
+            elif hasattr(attr_type, "to_dict"):
+                result[attr_name] = attr_type.to_dict()
+            else:
+                result[attr_name] = str(attr_type)
+        return result
+    except Exception:
+        # Namespace doesn't exist or other error
+        return None
+
+
+@schema.command("apply", context_settings={"help_option_names": ["-h", "--help"]})
+@click.option("-n", "--namespace", required=True, help="Target namespace to apply schema to")
+@click.option("-f", "--file", "schema_file", required=True, help="JSON file containing schema definition")
+@click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")
+@click.option("--dry-run", is_flag=True, help="Show diff only, don't apply changes")
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def schema_apply(
+    ctx: click.Context,
+    namespace: str,
+    schema_file: str,
+    region: str | None,
+    dry_run: bool,
+    yes: bool,
+) -> None:
+    """Apply a schema from a JSON file to a namespace.
+
+    Shows a diff of schema changes before applying. Type changes to existing
+    attributes are not allowed and will be flagged as conflicts.
+    """
+    # Load schema from file
+    new_schema = load_schema_file(schema_file)
+
+    if not new_schema:
+        console.print("[yellow]Schema file is empty, nothing to apply[/yellow]")
+        return
+
+    # Get current schema from namespace
+    ns = get_namespace(namespace, region)
+    current_schema = get_current_schema(ns)
+
+    # Compute diff
+    diff = compute_schema_diff(current_schema, new_schema)
+
+    # Display diff
+    display_schema_diff(diff, namespace)
+
+    # Check for conflicts
+    if diff.has_conflicts:
+        console.print("[red]Error: Cannot apply schema with type conflicts.[/red]")
+        console.print("[red]Changing an existing attribute's type is not allowed.[/red]")
+        sys.exit(1)
+
+    # Check if there are any changes
+    if not diff.has_changes:
+        console.print("[green]Schema is already up to date, no changes needed.[/green]")
+        return
+
+    # Dry run stops here
+    if dry_run:
+        console.print("[dim]Dry run mode - no changes applied[/dim]")
+        return
+
+    # Confirm unless --yes
+    if not yes:
+        confirm = click.confirm("Apply these schema changes?", default=False)
+        if not confirm:
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    # Apply the schema
+    try:
+        console.print(f"[dim]Applying schema to {namespace}...[/dim]")
+        ns.write(
+            upsert_rows=[{"id": "__schema_placeholder__"}],
+            schema=new_schema,
+        )
+        console.print(f"[green]Successfully applied schema to {namespace}[/green]")
+    except Exception as e:
+        console.print(f"[red]Error applying schema: {e}[/red]")
+        sys.exit(1)
