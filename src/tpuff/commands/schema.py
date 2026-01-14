@@ -372,6 +372,20 @@ def list_namespaces_by_prefix(prefix: str, region: str | None) -> list[str]:
     return sorted([ns.id for ns in namespaces if ns.id.startswith(prefix)])
 
 
+def list_all_namespaces(region: str | None) -> list[str]:
+    """List all namespaces.
+
+    Args:
+        region: Optional region override
+
+    Returns:
+        List of all namespace IDs
+    """
+    client = get_turbopuffer_client(region)
+    namespaces = list(client.namespaces())
+    return sorted([ns.id for ns in namespaces])
+
+
 @dataclass
 class BatchApplyResult:
     """Result of applying schema to a single namespace in a batch operation."""
@@ -603,6 +617,7 @@ def apply_schema_to_multiple_namespaces(
 @schema.command("apply", context_settings={"help_option_names": ["-h", "--help"]})
 @click.option("-n", "--namespace", help="Target namespace to apply schema to")
 @click.option("--prefix", help="Apply to all namespaces matching this prefix")
+@click.option("--all", "apply_all", is_flag=True, help="Apply to all namespaces")
 @click.option("-f", "--file", "schema_file", required=True, help="JSON file containing schema definition")
 @click.option("-r", "--region", help="Override the region (e.g., aws-us-east-1, gcp-us-central1)")
 @click.option("--dry-run", is_flag=True, help="Show diff only, don't apply changes")
@@ -612,6 +627,7 @@ def schema_apply(
     ctx: click.Context,
     namespace: str | None,
     prefix: str | None,
+    apply_all: bool,
     schema_file: str,
     region: str | None,
     dry_run: bool,
@@ -622,18 +638,20 @@ def schema_apply(
     Shows a diff of schema changes before applying. Type changes to existing
     attributes are not allowed and will be flagged as conflicts.
 
-    Use -n/--namespace for a single namespace, or --prefix to apply to all
-    namespaces matching a prefix.
+    Use -n/--namespace for a single namespace, --prefix to apply to all
+    namespaces matching a prefix, or --all to apply to all namespaces.
     """
-    # Validate options: must have exactly one of namespace or prefix
-    if namespace and prefix:
-        console.print("[red]Error: Cannot use both --namespace and --prefix[/red]")
-        console.print("[dim]Use -n/--namespace for a single namespace, or --prefix for batch apply[/dim]")
+    # Validate options: must have exactly one of namespace, prefix, or all
+    mode_count = sum([bool(namespace), bool(prefix), apply_all])
+
+    if mode_count > 1:
+        console.print("[red]Error: Cannot use more than one of --namespace, --prefix, and --all[/red]")
+        console.print("[dim]Use -n/--namespace for a single namespace, --prefix for prefix match, or --all for all namespaces[/dim]")
         sys.exit(1)
 
-    if not namespace and not prefix:
-        console.print("[red]Error: Must specify either --namespace or --prefix[/red]")
-        console.print("[dim]Use -n/--namespace for a single namespace, or --prefix for batch apply[/dim]")
+    if mode_count == 0:
+        console.print("[red]Error: Must specify one of --namespace, --prefix, or --all[/red]")
+        console.print("[dim]Use -n/--namespace for a single namespace, --prefix for prefix match, or --all for all namespaces[/dim]")
         sys.exit(1)
 
     # Load schema from file
@@ -646,9 +664,8 @@ def schema_apply(
     if namespace:
         # Single namespace mode
         apply_schema_to_single_namespace(namespace, new_schema, region, dry_run, yes)
-    else:
+    elif prefix:
         # Prefix mode - batch apply
-        assert prefix is not None
         namespaces = list_namespaces_by_prefix(prefix, region)
 
         if not namespaces:
@@ -656,6 +673,16 @@ def schema_apply(
             return
 
         console.print(f"[dim]Found {len(namespaces)} namespace(s) matching prefix '{prefix}'[/dim]")
+        apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes)
+    else:
+        # All namespaces mode
+        namespaces = list_all_namespaces(region)
+
+        if not namespaces:
+            console.print("[yellow]No namespaces found[/yellow]")
+            return
+
+        console.print(f"[dim]Found {len(namespaces)} namespace(s)[/dim]")
         apply_schema_to_multiple_namespaces(namespaces, new_schema, region, dry_run, yes)
 
 
