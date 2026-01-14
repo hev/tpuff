@@ -1,6 +1,5 @@
 """Tests for schema commands."""
 
-import json
 from io import StringIO
 from unittest.mock import MagicMock, patch
 

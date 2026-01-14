@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 import click
@@ -21,13 +21,12 @@ from tpuff.utils.metadata_fetcher import (
     get_unindexed_bytes,
 )
 from tpuff.utils.metrics import (
-    PrometheusMetric,
     MetricValue,
-    format_prometheus_metrics,
+    PrometheusMetric,
     create_simple_gauge,
+    format_prometheus_metrics,
     get_current_timestamp,
 )
-
 
 console = Console()
 
@@ -382,11 +381,11 @@ def start_http_server(
         console.print("[dim]                  Note: Recall estimation runs queries and incurs costs[/dim]")
     else:
         console.print("[dim]  Recall:         disabled (use --include-recall to enable)[/dim]")
-    console.print(f"\n[dim]  Endpoints:[/dim]")
+    console.print("\n[dim]  Endpoints:[/dim]")
     console.print(f"[dim]    http://localhost:{port}/metrics[/dim]")
     console.print(f"[dim]    http://localhost:{port}/health[/dim]")
     console.print(f"[dim]    http://localhost:{port}/[/dim]")
-    console.print(f"\n[dim]  Press Ctrl+C to stop[/dim]\n")
+    console.print("\n[dim]  Press Ctrl+C to stop[/dim]\n")
 
     # Start server
     try:

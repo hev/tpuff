@@ -3,14 +3,13 @@
 import click
 
 from tpuff import __version__
-from tpuff.commands.list import list_cmd
-from tpuff.commands.search import search
 from tpuff.commands.delete import delete
 from tpuff.commands.edit import edit
-from tpuff.commands.get import get
 from tpuff.commands.export import export
+from tpuff.commands.get import get
+from tpuff.commands.list import list_cmd
 from tpuff.commands.schema import schema
-
+from tpuff.commands.search import search
 
 # Context settings to enable -h as help alias for all commands
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
