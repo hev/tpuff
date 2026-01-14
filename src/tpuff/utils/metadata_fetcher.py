@@ -1,11 +1,11 @@
 """Namespace metadata fetching utilities."""
 
+import concurrent.futures
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-import concurrent.futures
 
-from tpuff.client import get_turbopuffer_client, get_namespace, clear_client_cache
+from tpuff.client import clear_client_cache, get_namespace, get_turbopuffer_client
 from tpuff.utils.debug import debug_log
 from tpuff.utils.regions import TURBOPUFFER_REGIONS
 

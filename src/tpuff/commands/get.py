@@ -9,7 +9,6 @@ from rich.console import Console
 from tpuff.client import get_namespace
 from tpuff.utils.debug import debug_log
 
-
 console = Console()
 
 

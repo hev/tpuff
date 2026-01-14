@@ -8,7 +8,6 @@ from rich.console import Console
 from tpuff.client import get_turbopuffer_client
 from tpuff.utils.debug import debug_log
 
-
 console = Console()
 
 
@@ -91,7 +90,7 @@ def delete(
                 console.print(f"[dim]  - {ns.id}[/dim]")
 
             console.print("\n[bold yellow]💀 This is your last chance to back out! 💀[/bold yellow]")
-            console.print(f"[dim]To confirm, please type: [bold red]yolo[/bold red][/dim]\n")
+            console.print("[dim]To confirm, please type: [bold red]yolo[/bold red][/dim]\n")
 
             answer = prompt_user(">")
 

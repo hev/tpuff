@@ -8,7 +8,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from tpuff.client import get_namespace, get_turbopuffer_client
+from tpuff.client import get_namespace
 from tpuff.utils.debug import debug_log
 from tpuff.utils.metadata_fetcher import (
     NamespaceWithMetadata,
@@ -16,7 +16,6 @@ from tpuff.utils.metadata_fetcher import (
     get_index_status,
     get_unindexed_bytes,
 )
-
 
 console = Console()
 

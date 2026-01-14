@@ -8,7 +8,6 @@ from turbopuffer import Turbopuffer
 from tpuff.utils.debug import debug_log
 from tpuff.utils.regions import DEFAULT_REGION
 
-
 # Global client cache to avoid re-creating clients for the same region
 _client_cache: dict[str, Turbopuffer] = {}
 

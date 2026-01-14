@@ -13,7 +13,6 @@ from tpuff.client import get_namespace
 from tpuff.utils.debug import debug_log
 from tpuff.utils.embeddings import embedding_generator
 
-
 console = Console()
 
 
