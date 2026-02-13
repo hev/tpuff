@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from tpuff.client import get_namespace, get_turbopuffer_client
+from tpuff.utils.output import is_plain, print_table_plain
 
 console = Console()
 
@@ -173,6 +174,10 @@ def schema_get(
     raw: bool,
 ) -> None:
     """Display the schema for a namespace."""
+    # Plain output mode implies raw JSON
+    plain = is_plain(ctx)
+    use_raw = raw or plain
+
     try:
         ns = get_namespace(namespace, region)
         metadata = ns.metadata()
@@ -181,7 +186,7 @@ def schema_get(
         schema_data = metadata.schema if hasattr(metadata, "schema") else {}
 
         if not schema_data:
-            if raw:
+            if use_raw:
                 print("{}")
             else:
                 console.print(f"[yellow]No schema found for namespace: {namespace}[/yellow]")
@@ -198,14 +203,14 @@ def schema_get(
             else:
                 schema_dict[attr_name] = str(attr_type)
 
-        if raw:
+        if use_raw:
             print(json.dumps(schema_dict))
         else:
             console.print(f"\n[bold]Schema for namespace: {namespace}[/bold]\n")
             console.print(json.dumps(schema_dict, indent=2))
 
     except Exception as e:
-        if raw:
+        if use_raw:
             print(json.dumps({"error": str(e)}), file=sys.stderr)
         else:
             console.print(f"[red]Error: {e}[/red]")
@@ -404,33 +409,56 @@ def display_batch_summary(results: list[BatchApplyResult], dry_run: bool = False
         results: List of BatchApplyResult objects
         dry_run: Whether this was a dry run
     """
-    table = Table(show_header=True, header_style="cyan")
-    table.add_column("Namespace")
-    table.add_column("Changes")
-    table.add_column("Status")
+    # Check if plain mode is active
+    ctx = click.get_current_context(silent=True)
+    plain = is_plain(ctx) if ctx else False
+
+    headers = ["Namespace", "Changes", "Status"]
+    table_rows = []
 
     for result in results:
         if result.conflicts > 0:
-            changes = f"+{result.additions} attributes [red]({result.conflicts} conflict(s))[/red]"
-            status = "[red]blocked[/red]"
+            if plain:
+                changes = f"+{result.additions} attributes ({result.conflicts} conflict(s))"
+                status = "blocked"
+            else:
+                changes = f"+{result.additions} attributes [red]({result.conflicts} conflict(s))[/red]"
+                status = "[red]blocked[/red]"
         elif result.error:
-            changes = "[dim]N/A[/dim]"
-            status = f"[red]error: {result.error}[/red]"
+            if plain:
+                changes = "N/A"
+                status = f"error: {result.error}"
+            else:
+                changes = "[dim]N/A[/dim]"
+                status = f"[red]error: {result.error}[/red]"
         elif result.additions == 0:
-            changes = "[dim]no changes[/dim]"
-            status = "[green]up-to-date[/green]" if not dry_run else "[dim]would skip[/dim]"
+            if plain:
+                changes = "no changes"
+                status = "up-to-date" if not dry_run else "would skip"
+            else:
+                changes = "[dim]no changes[/dim]"
+                status = "[green]up-to-date[/green]" if not dry_run else "[dim]would skip[/dim]"
         else:
             changes = f"+{result.additions} attribute(s)"
             if dry_run:
-                status = "[yellow]would apply[/yellow]"
+                status = "would apply" if plain else "[yellow]would apply[/yellow]"
             elif result.success:
-                status = "[green]applied[/green]"
+                status = "applied" if plain else "[green]applied[/green]"
             else:
-                status = "[red]failed[/red]"
+                status = "failed" if plain else "[red]failed[/red]"
 
-        table.add_row(f"[bold]{result.namespace}[/bold]", changes, status)
+        ns_display = result.namespace if plain else f"[bold]{result.namespace}[/bold]"
+        table_rows.append([ns_display, changes, status])
 
-    console.print(table)
+    if plain:
+        print_table_plain(headers, table_rows)
+    else:
+        table = Table(show_header=True, header_style="cyan")
+        for h in headers:
+            table.add_column(h)
+        for r in table_rows:
+            table.add_row(*r)
+        console.print(table)
 
 
 def apply_schema_to_single_namespace(
