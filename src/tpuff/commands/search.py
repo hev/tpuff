@@ -12,6 +12,7 @@ from rich.table import Table
 from tpuff.client import get_namespace
 from tpuff.utils.debug import debug_log
 from tpuff.utils.embeddings import embedding_generator
+from tpuff.utils.output import is_plain, print_table_plain, status_print
 
 console = Console()
 
@@ -70,6 +71,7 @@ def search(
     region: str | None,
 ) -> None:
     """Search for documents in a namespace using vector similarity or full-text search."""
+    plain = is_plain(ctx)
     use_fts = bool(fts_field)
 
     # Validate options
@@ -80,10 +82,10 @@ def search(
         sys.exit(1)
 
     if use_fts and model_id:
-        console.print("[yellow]Warning: Both --fts and --model specified. Using FTS mode.[/yellow]")
+        status_print(ctx, "[yellow]Warning: Both --fts and --model specified. Using FTS mode.[/yellow]", console)
 
-    console.print(f"\n[bold]Searching in namespace: {namespace}[/bold]")
-    console.print(f'[dim]Query: "{query}"[/dim]')
+    status_print(ctx, f"\n[bold]Searching in namespace: {namespace}[/bold]", console)
+    status_print(ctx, f'[dim]Query: "{query}"[/dim]', console)
 
     try:
         ns = get_namespace(namespace, region)
@@ -95,7 +97,7 @@ def search(
 
         if use_fts:
             # Full-text search mode
-            console.print(f'[dim]Mode: Full-text search (BM25) on field "{fts_field}"[/dim]\n')
+            status_print(ctx, f'[dim]Mode: Full-text search (BM25) on field "{fts_field}"[/dim]\n', console)
 
             query_params = {
                 "rank_by": [fts_field, "BM25", query],
@@ -105,8 +107,8 @@ def search(
                 query_params["exclude_attributes"] = [vector_info["attributeName"]]
         else:
             # Vector search mode
-            console.print("[dim]Mode: Vector similarity search[/dim]")
-            console.print(f"[dim]Model: {model_id}[/dim]\n")
+            status_print(ctx, "[dim]Mode: Vector similarity search[/dim]", console)
+            status_print(ctx, f"[dim]Model: {model_id}[/dim]\n", console)
 
             # Generate embedding for query
             try:
@@ -130,7 +132,7 @@ def search(
                 # Re-raise other errors
                 raise
 
-            console.print(f"[dim]Generated {len(embedding)}-dimensional embedding[/dim]\n")
+            status_print(ctx, f"[dim]Generated {len(embedding)}-dimensional embedding[/dim]\n", console)
 
             # Verify vector configuration
             if not vector_info:
@@ -149,7 +151,7 @@ def search(
                 )
                 sys.exit(1)
 
-            console.print(f"[dim]Using distance metric: {distance_metric}[/dim]\n")
+            status_print(ctx, f"[dim]Using distance metric: {distance_metric}[/dim]\n", console)
 
             query_params = {
                 "rank_by": [vector_info["attributeName"], "ANN", embedding],
@@ -195,15 +197,11 @@ def search(
             if hasattr(first_row, "model_dump"):
                 debug_log("First Row Structure", {"keys": list(first_row.model_dump().keys())})
 
-        console.print(f"[bold]Found {len(rows)} result(s):[/bold]\n")
+        status_print(ctx, f"[bold]Found {len(rows)} result(s):[/bold]\n", console)
 
-        # Create table for results
-        table = Table(show_header=True, header_style="cyan")
-        table.add_column("ID")
-        table.add_column("Contents")
-        table.add_column("Score" if use_fts else "Distance")
-
-        # Add rows to table
+        # Collect row data
+        score_header = "Score" if use_fts else "Distance"
+        table_rows = []
         for row in rows:
             # Get the row as a dict
             if hasattr(row, "model_dump"):
@@ -218,12 +216,7 @@ def search(
             if use_fts:
                 # Show only the FTS field
                 field_value = row_dict.get(fts_field, "N/A")
-                display_contents = str(field_value) if field_value is not None else "[dim]N/A[/dim]"
-
-                # Truncate if too long
-                max_length = 80
-                if len(display_contents) > max_length:
-                    display_contents = display_contents[:max_length] + "..."
+                display_contents = str(field_value) if field_value is not None else "N/A"
             else:
                 # Vector search: show all attributes except system fields
                 contents = {}
@@ -232,25 +225,34 @@ def search(
                     if key not in exclude_keys and not key.startswith("_"):
                         contents[key] = value
 
-                # Stringify and truncate contents
-                contents_str = json.dumps(contents, default=str)
-                max_length = 80
-                display_contents = (
-                    contents_str[:max_length] + "..." if len(contents_str) > max_length else contents_str
-                )
+                display_contents = json.dumps(contents, default=str)
 
             # Get distance/score value
             dist_value = row_dict.get("$dist") or row_dict.get("dist")
-            score_display = f"{dist_value:.4f}" if dist_value is not None else "[dim]N/A[/dim]"
+            if plain:
+                score_display = f"{dist_value:.4f}" if dist_value is not None else "N/A"
+            else:
+                score_display = f"{dist_value:.4f}" if dist_value is not None else "[dim]N/A[/dim]"
 
-            table.add_row(str(row_id), display_contents, score_display)
+            table_rows.append([str(row_id), display_contents, score_display])
 
-        console.print(table)
+        if plain:
+            print_table_plain(["ID", "Contents", score_header], table_rows)
+        else:
+            table = Table(show_header=True, header_style="cyan")
+            table.add_column("ID")
+            table.add_column("Contents")
+            table.add_column(score_header)
+            for r in table_rows:
+                table.add_row(*r)
+            console.print(table)
 
         # Show performance info
         if hasattr(result, "performance") and result.performance:
-            console.print(
-                f"\n[dim]Search completed in {query_time:.0f}ms (query execution: {result.performance.query_execution_ms:.2f}ms)[/dim]"
+            status_print(
+                ctx,
+                f"\n[dim]Search completed in {query_time:.0f}ms (query execution: {result.performance.query_execution_ms:.2f}ms)[/dim]",
+                console,
             )
 
     except Exception as e:

@@ -10,6 +10,7 @@ from tpuff.commands.get import get
 from tpuff.commands.list import list_cmd
 from tpuff.commands.schema import schema
 from tpuff.commands.search import search
+from tpuff.utils.output import resolve_output_mode
 
 # Context settings to enable -h as help alias for all commands
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
@@ -18,11 +19,19 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 @click.group(context_settings=CONTEXT_SETTINGS)
 @click.version_option(version=__version__, prog_name="tpuff")
 @click.option("--debug", is_flag=True, help="Enable debug output")
+@click.option(
+    "-o",
+    "--output",
+    type=click.Choice(["human", "plain"]),
+    default=None,
+    help="Output format: human (rich tables) or plain (pipe-delimited). Auto-detects TTY if omitted.",
+)
 @click.pass_context
-def cli(ctx: click.Context, debug: bool) -> None:
+def cli(ctx: click.Context, debug: bool, output: str | None) -> None:
     """tpuff - CLI tool for Turbopuffer vector database."""
     ctx.ensure_object(dict)
     ctx.obj["debug"] = debug
+    ctx.obj["output_mode"] = resolve_output_mode(output)
 
 
 # Register commands

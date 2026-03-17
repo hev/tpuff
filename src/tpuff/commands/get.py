@@ -8,6 +8,7 @@ from rich.console import Console
 
 from tpuff.client import get_namespace
 from tpuff.utils.debug import debug_log
+from tpuff.utils.output import is_plain, status_print
 
 console = Console()
 
@@ -24,8 +25,14 @@ def get(
     region: str | None,
 ) -> None:
     """Get a document by ID from a namespace."""
+    plain = is_plain(ctx)
+
     try:
-        console.print(f"\n[bold]Querying document with ID: {id} from namespace: {namespace}[/bold]\n")
+        status_print(
+            ctx,
+            f"\n[bold]Querying document with ID: {id} from namespace: {namespace}[/bold]\n",
+            console,
+        )
 
         # Get namespace reference
         ns = get_namespace(namespace, region)
@@ -64,14 +71,20 @@ def get(
         else:
             doc_dict = {"id": getattr(doc, "id", "N/A")}
 
-        # Display document
-        console.print("[cyan]Document:[/cyan]")
-        console.print(json.dumps(doc_dict, indent=2, default=str))
+        if plain:
+            # Plain mode: raw JSON only
+            click.echo(json.dumps(doc_dict, default=str))
+        else:
+            # Display document
+            console.print("[cyan]Document:[/cyan]")
+            console.print(json.dumps(doc_dict, indent=2, default=str))
 
         # Show performance info
         if hasattr(result, "performance") and result.performance:
-            console.print(
-                f"\n[dim]Query took {result.performance.query_execution_ms:.2f}ms[/dim]"
+            status_print(
+                ctx,
+                f"\n[dim]Query took {result.performance.query_execution_ms:.2f}ms[/dim]",
+                console,
             )
 
     except Exception as e:
