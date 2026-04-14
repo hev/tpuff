@@ -43,7 +43,13 @@ def scan(
         total_scanned = 0
 
         if not plain:
-            from rich.progress import Progress, TextColumn, BarColumn, MofNCompleteColumn, SpinnerColumn
+            from rich.progress import (
+                BarColumn,
+                MofNCompleteColumn,
+                Progress,
+                SpinnerColumn,
+                TextColumn,
+            )
 
             progress = Progress(
                 SpinnerColumn(),

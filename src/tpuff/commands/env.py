@@ -43,7 +43,7 @@ def env_add(ctx: click.Context, name: str) -> None:
     # Show if it was set as active
     active = get_active_env()
     if active and active[0] == name:
-        click.echo(f"Set as active environment.")
+        click.echo("Set as active environment.")
 
 
 @env.command("use")
