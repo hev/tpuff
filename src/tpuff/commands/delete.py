@@ -6,6 +6,7 @@ import click
 from rich.console import Console
 
 from tpuff.client import get_turbopuffer_client
+from tpuff.config import CONFIG_FILE, deletes_allowed
 from tpuff.utils.debug import debug_log
 
 console = Console()
@@ -30,6 +31,11 @@ def delete(
     region: str | None,
 ) -> None:
     """Delete namespace(s)."""
+    if not deletes_allowed():
+        console.print("[red]Error: Deletes are disabled.[/red]")
+        console.print(f"[dim]To enable, add [bold]allow_deletes = true[/bold] to {CONFIG_FILE}[/dim]")
+        sys.exit(1)
+
     client = get_turbopuffer_client(region)
 
     try:

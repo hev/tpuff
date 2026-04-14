@@ -3,8 +3,10 @@
 import os
 import sys
 
+import click
 from turbopuffer import Turbopuffer
 
+from tpuff.config import get_active_env, get_env
 from tpuff.utils.debug import debug_log
 from tpuff.utils.regions import DEFAULT_REGION
 
@@ -12,8 +14,38 @@ from tpuff.utils.regions import DEFAULT_REGION
 _client_cache: dict[str, Turbopuffer] = {}
 
 
+def _resolve_config(env_name: str | None = None) -> tuple[str | None, str | None, str | None]:
+    """Resolve api_key, region, base_url from config file.
+
+    Args:
+        env_name: Optional specific environment name to use.
+
+    Returns:
+        (api_key, region, base_url) from config, any may be None.
+    """
+    if env_name:
+        env_dict = get_env(env_name)
+        if not env_dict:
+            print(f"Error: environment '{env_name}' not found in config", file=sys.stderr)
+            print("Run 'tpuff env list' to see available environments.", file=sys.stderr)
+            sys.exit(1)
+        return env_dict.get("api_key"), env_dict.get("region"), env_dict.get("base_url")
+
+    active = get_active_env()
+    if active:
+        _, env_dict = active
+        return env_dict.get("api_key"), env_dict.get("region"), env_dict.get("base_url")
+
+    return None, None, None
+
+
 def get_turbopuffer_client(region_override: str | None = None) -> Turbopuffer:
     """Get a Turbopuffer client configured with the appropriate region.
+
+    Resolution order:
+    1. Environment variables (always win if set)
+    2. Config file (~/.tpuff/config.toml) active or --env specified environment
+    3. Error with helpful message
 
     Args:
         region_override: Optional region to use instead of environment variable.
@@ -21,15 +53,28 @@ def get_turbopuffer_client(region_override: str | None = None) -> Turbopuffer:
     Returns:
         Configured Turbopuffer client.
     """
-    api_key = os.environ.get("TURBOPUFFER_API_KEY")
+    # Get --env flag from Click context if available
+    env_name = None
+    ctx = click.get_current_context(silent=True)
+    if ctx and ctx.obj:
+        env_name = ctx.obj.get("env")
+
+    # Resolve from config file
+    cfg_api_key, cfg_region, cfg_base_url = _resolve_config(env_name)
+
+    # Environment variables take priority, then config
+    api_key = os.environ.get("TURBOPUFFER_API_KEY") or cfg_api_key
 
     if not api_key:
-        print("Error: TURBOPUFFER_API_KEY environment variable is not set", file=sys.stderr)
+        print(
+            "Error: No API key found. Set TURBOPUFFER_API_KEY or run 'tpuff env add <name>'.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    # Determine the region
-    base_url = os.environ.get("TURBOPUFFER_BASE_URL")
-    region = region_override or os.environ.get("TURBOPUFFER_REGION") or DEFAULT_REGION
+    # Determine the region and base_url
+    base_url = os.environ.get("TURBOPUFFER_BASE_URL") or cfg_base_url or None
+    region = region_override or os.environ.get("TURBOPUFFER_REGION") or cfg_region or DEFAULT_REGION
 
     # Cache key is the region or base_url
     cache_key = base_url or region
