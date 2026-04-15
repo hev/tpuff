@@ -87,7 +87,23 @@ func truncate(s string, maxLen int) string {
 }
 
 // docPreviewLine creates a short one-line preview of a document.
-func docPreviewLine(doc map[string]any, schemaDict map[string]any, maxLen int) string {
+// If contentField is set, that field's value is shown directly.
+func docPreviewLine(doc map[string]any, schemaDict map[string]any, contentField string, maxLen int) string {
+	// If a content field is configured, show just that field's value
+	if contentField != "" {
+		if val, ok := doc[contentField]; ok {
+			var s string
+			switch v := val.(type) {
+			case string:
+				s = v
+			default:
+				b, _ := json.Marshal(v)
+				s = string(b)
+			}
+			return truncate(s, maxLen)
+		}
+	}
+
 	filtered := filterVectors(doc, schemaDict)
 	delete(filtered, "id")
 

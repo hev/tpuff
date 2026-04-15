@@ -51,12 +51,28 @@ var envShowCmd = &cobra.Command{
 	RunE:  runEnvShow,
 }
 
+var envSetContentCmd = &cobra.Command{
+	Use:   "set-content FIELD",
+	Short: "Set the content field shown in the browser preview",
+	Long: `Set which document field is displayed as the preview in the interactive browser.
+
+Without --namespace, sets the default for the active environment.
+With --namespace, sets an override for that specific namespace.
+
+Use an empty string "" to clear the setting.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runEnvSetContent,
+}
+
 func init() {
+	envSetContentCmd.Flags().StringP("namespace", "n", "", "Set content field for a specific namespace")
+
 	envCmd.AddCommand(envAddCmd)
 	envCmd.AddCommand(envUseCmd)
 	envCmd.AddCommand(envListCmd)
 	envCmd.AddCommand(envRmCmd)
 	envCmd.AddCommand(envShowCmd)
+	envCmd.AddCommand(envSetContentCmd)
 	rootCmd.AddCommand(envCmd)
 }
 
@@ -166,6 +182,40 @@ func runEnvShow(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  API Key:  %s\n", config.MaskKey(env.APIKey))
 	if env.BaseURL != "" {
 		fmt.Printf("  Base URL: %s\n", env.BaseURL)
+	}
+	if env.ContentField != "" {
+		fmt.Printf("  Content:  %s\n", env.ContentField)
+	}
+	if len(env.ContentFields) > 0 {
+		fmt.Println("  Content overrides:")
+		for ns, field := range env.ContentFields {
+			fmt.Printf("    %s → %s\n", ns, field)
+		}
+	}
+	return nil
+}
+
+func runEnvSetContent(cmd *cobra.Command, args []string) error {
+	field := args[0]
+	namespace, _ := cmd.Flags().GetString("namespace")
+
+	if err := config.SetContentField(field, namespace); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		os.Exit(1)
+	}
+
+	if namespace != "" {
+		if field == "" {
+			fmt.Printf("Cleared content field for namespace '%s'.\n", namespace)
+		} else {
+			fmt.Printf("Content field for namespace '%s' set to '%s'.\n", namespace, field)
+		}
+	} else {
+		if field == "" {
+			fmt.Println("Cleared default content field.")
+		} else {
+			fmt.Printf("Default content field set to '%s'.\n", field)
+		}
 	}
 	return nil
 }

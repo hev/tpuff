@@ -19,14 +19,15 @@ type documentsErrMsg struct {
 }
 
 type documentsModel struct {
-	namespace  string
-	rows       []map[string]any
-	cursor     int
-	loading    bool
-	err        error
-	page       int
-	pageSize   int
-	schemaDict map[string]any
+	namespace    string
+	rows         []map[string]any
+	cursor       int
+	loading      bool
+	err          error
+	page         int
+	pageSize     int
+	schemaDict   map[string]any
+	contentField string
 }
 
 func newDocumentsModel(namespace string) documentsModel {
@@ -153,7 +154,11 @@ func (m documentsModel) view(width, height int) string {
 		contentsW = 40
 	}
 
-	header := fmt.Sprintf("  %-*s %s", idW, "ID", "Contents")
+	contentsLabel := "Contents"
+	if m.contentField != "" {
+		contentsLabel = m.contentField
+	}
+	header := fmt.Sprintf("  %-*s %s", idW, "ID", contentsLabel)
 	b.WriteString(columnHeaderStyle.Render(header))
 	b.WriteString("\n")
 
@@ -168,7 +173,7 @@ func (m documentsModel) view(width, height int) string {
 		row := m.rows[i]
 		id := fmt.Sprintf("%v", row["id"])
 		id = truncate(id, idW)
-		preview := docPreviewLine(row, m.schemaDict, contentsW)
+		preview := docPreviewLine(row, m.schemaDict, m.contentField, contentsW)
 
 		line := fmt.Sprintf("  %-*s %s", idW, id, preview)
 		if i == m.cursor {

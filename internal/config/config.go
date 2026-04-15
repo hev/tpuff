@@ -22,9 +22,22 @@ type Config struct {
 }
 
 type EnvConfig struct {
-	APIKey  string `toml:"api_key"`
-	Region  string `toml:"region"`
-	BaseURL string `toml:"base_url,omitempty"`
+	APIKey        string            `toml:"api_key"`
+	Region        string            `toml:"region"`
+	BaseURL       string            `toml:"base_url,omitempty"`
+	ContentField  string            `toml:"content_field,omitempty"`
+	ContentFields map[string]string `toml:"content_fields,omitempty"`
+}
+
+// GetContentField returns the content field for a given namespace.
+// Priority: namespace-specific override > env default > "".
+func (e EnvConfig) GetContentField(namespace string) string {
+	if e.ContentFields != nil {
+		if f, ok := e.ContentFields[namespace]; ok {
+			return f
+		}
+	}
+	return e.ContentField
 }
 
 // Load reads config from ~/.tpuff/config.toml. Returns empty config if not found.
@@ -134,6 +147,39 @@ func SetActive(name string) error {
 		return fmt.Errorf("environment '%s' not found", name)
 	}
 	cfg.Active = name
+	return Save(cfg)
+}
+
+// GetActiveContentField returns the content field for the active env and namespace.
+func GetActiveContentField(namespace string) string {
+	_, env, ok := GetActiveEnv()
+	if !ok {
+		return ""
+	}
+	return env.GetContentField(namespace)
+}
+
+// SetContentField sets the content field for the active environment.
+// If namespace is empty, sets the env-level default. Otherwise sets a namespace override.
+func SetContentField(field, namespace string) error {
+	cfg := Load()
+	if cfg.Active == "" {
+		return fmt.Errorf("no active environment")
+	}
+	env := cfg.Envs[cfg.Active]
+	if namespace == "" {
+		env.ContentField = field
+	} else {
+		if env.ContentFields == nil {
+			env.ContentFields = make(map[string]string)
+		}
+		if field == "" {
+			delete(env.ContentFields, namespace)
+		} else {
+			env.ContentFields[namespace] = field
+		}
+	}
+	cfg.Envs[cfg.Active] = env
 	return Save(cfg)
 }
 

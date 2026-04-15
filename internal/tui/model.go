@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/hev/tpuff/internal/config"
 )
 
 type view int
@@ -106,6 +107,7 @@ func (m Model) updateNamespaces(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.schemaDict = ns.Metadata.Schema
 				}
 				m.documents = newDocumentsModel(m.selectedNamespace)
+				m.documents.contentField = config.GetActiveContentField(m.selectedNamespace)
 				m.view = viewDocuments
 				return m, m.documents.init(m.region, m.schemaDict)
 			}
