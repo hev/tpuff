@@ -13,8 +13,6 @@ from tpuff.utils.debug import debug_log
 from tpuff.utils.metadata_fetcher import (
     NamespaceWithMetadata,
     fetch_namespaces_with_metadata,
-    get_index_status,
-    get_unindexed_bytes,
 )
 from tpuff.utils.output import is_plain, print_table_plain, status_print
 
@@ -228,12 +226,6 @@ def display_namespaces(
         console.print("No namespaces found")
         return
 
-    status_print(
-        ctx,
-        f"\n[bold]Found {len(namespaces_with_metadata)} namespace(s):[/bold]\n",
-        console,
-    )
-
     # Sort by updated_at in descending order (most recent first)
     def sort_key(item: NamespaceWithMetadata):
         if not item.metadata:
@@ -248,90 +240,61 @@ def display_namespaces(
 
     namespaces_with_metadata.sort(key=sort_key, reverse=True)
 
-    # Build headers
-    headers = ["Namespace"]
-    if all_regions:
-        headers.append("Region")
-    headers.extend(["Rows", "Logical Bytes", "Index Status", "Unindexed Bytes"])
-    if include_recall:
-        headers.append("Recall")
-    headers.append("Updated")
+    if plain:
+        # Plain mode: pipe-delimited for scripts
+        headers = ["Namespace"]
+        if all_regions:
+            headers.append("Region")
+        headers.extend(["Rows", "Size", "Updated"])
+        if include_recall:
+            headers.append("Recall")
 
-    # Collect row data
-    table_rows = []
-    for item in namespaces_with_metadata:
-        if item.metadata:
-            index_status = get_index_status(item.metadata)
-            unindexed = get_unindexed_bytes(item.metadata)
-
-            if plain:
+        table_rows = []
+        for item in namespaces_with_metadata:
+            if item.metadata:
                 row = [item.namespace_id]
                 if all_regions:
                     row.append(item.region or "")
                 row.extend([
                     f"{item.metadata.approx_row_count:,}",
                     format_bytes(item.metadata.approx_logical_bytes),
-                    index_status,
-                    format_bytes(unindexed),
+                    format_updated_at(item.metadata.updated_at, plain=True),
                 ])
                 if include_recall:
                     row.append(format_recall(item.recall, plain=True))
-                row.append(format_updated_at(item.metadata.updated_at, plain=True))
             else:
-                index_status_display = (
-                    "[green]up-to-date[/green]"
-                    if index_status == "up-to-date"
-                    else "[red]updating[/red]"
-                )
-                unindexed_display = (
-                    f"[red]{format_bytes(unindexed)}[/red]"
-                    if unindexed > 0
-                    else format_bytes(0)
-                )
-
-                row = [f"[bold]{item.namespace_id}[/bold]"]
-                if all_regions and item.region:
-                    row.append(f"[dim]{item.region}[/dim]")
-                row.extend([
-                    f"{item.metadata.approx_row_count:,}",
-                    format_bytes(item.metadata.approx_logical_bytes),
-                    index_status_display,
-                    unindexed_display,
-                ])
-                if include_recall:
-                    row.append(format_recall(item.recall))
-                row.append(format_updated_at(item.metadata.updated_at))
-
-            table_rows.append(row)
-        else:
-            if plain:
                 row = [item.namespace_id]
                 if all_regions:
                     row.append(item.region or "")
-                row.extend(["N/A"] * 4)
+                row.extend(["N/A", "N/A", "N/A"])
                 if include_recall:
                     row.append("N/A")
-                row.append("N/A")
-            else:
-                row = [f"[bold]{item.namespace_id}[/bold]"]
-                if all_regions and item.region:
-                    row.append(f"[dim]{item.region}[/dim]")
-                row.extend(["[dim]N/A[/dim]"] * 4)
-                if include_recall:
-                    row.append("[dim]N/A[/dim]")
-                row.append("[dim]N/A[/dim]")
-
             table_rows.append(row)
 
-    if plain:
         print_table_plain(headers, table_rows)
     else:
-        table = Table(show_header=True, header_style="cyan")
-        for h in headers:
-            table.add_column(h)
-        for r in table_rows:
-            table.add_row(*r)
-        console.print(table)
+        # Human mode: lean ll-style output
+        for item in namespaces_with_metadata:
+            if item.metadata:
+                rows = f"{item.metadata.approx_row_count:,} rows"
+                size = format_bytes(item.metadata.approx_logical_bytes)
+                date = format_updated_at(item.metadata.updated_at)
+                region_part = f"  [dim]{item.region}[/dim]" if all_regions and item.region else ""
+                recall_part = f"  {format_recall(item.recall)}" if include_recall else ""
+                console.print(
+                    f"[bold]{item.namespace_id}[/bold]  "
+                    f"[cyan]{rows:>12}[/cyan]  "
+                    f"[dim]{size:>10}[/dim]{region_part}{recall_part}  "
+                    f"[dim]{date}[/dim]"
+                )
+            else:
+                region_part = f"  [dim]{item.region}[/dim]" if all_regions and item.region else ""
+                console.print(
+                    f"[bold]{item.namespace_id}[/bold]  "
+                    f"[dim]{'N/A':>12}[/dim]  "
+                    f"[dim]{'N/A':>10}[/dim]{region_part}  "
+                    f"[dim]N/A[/dim]"
+                )
 
 
 @click.command("list", context_settings={"help_option_names": ["-h", "--help"]})

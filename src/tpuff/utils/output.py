@@ -33,7 +33,7 @@ def is_plain(ctx: click.Context) -> bool:
     Returns:
         True if output mode is "plain".
     """
-    return ctx.obj.get("output_mode") == "plain"
+    return (ctx.obj or {}).get("output_mode") == "plain"
 
 
 def print_table_plain(headers: list[str], rows: list[list[str]]) -> None:
