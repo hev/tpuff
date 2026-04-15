@@ -6,7 +6,7 @@ from rich.table import Table
 
 from tpuff.config import add_env, get_active_env, list_envs, remove_env, set_active
 from tpuff.utils.output import is_plain, print_table_plain
-from tpuff.utils.regions import DEFAULT_REGION, TURBOPUFFER_REGIONS
+from tpuff.utils.regions import DEFAULT_REGION, TURBOPUFFER_REGIONS, is_valid_region
 
 console = Console()
 
@@ -29,12 +29,14 @@ def env():
 @click.pass_context
 def env_add(ctx: click.Context, name: str) -> None:
     """Add a new environment (interactive setup)."""
-    api_key = click.prompt("API key", hide_input=True)
-    region = click.prompt(
-        "Region",
-        type=click.Choice(TURBOPUFFER_REGIONS, case_sensitive=False),
-        default=DEFAULT_REGION,
-    )
+    api_key = click.prompt("API key")
+    region = click.prompt("Region", default=DEFAULT_REGION)
+    if not is_valid_region(region):
+        raise click.BadParameter(
+            f"Unknown region '{region}'. Valid regions:\n  "
+            + "\n  ".join(TURBOPUFFER_REGIONS),
+            param_hint="'region'",
+        )
     base_url = click.prompt("Base URL (optional, press Enter to skip)", default="")
 
     add_env(name, api_key, region, base_url)
