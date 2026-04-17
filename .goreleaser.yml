@@ -49,6 +49,37 @@ changelog:
       - "Merge pull request"
       - "Merge branch"
 
+dockers:
+  - id: exporter-amd64
+    goos: linux
+    goarch: amd64
+    ids: [tpuff]
+    dockerfile: Dockerfile.exporter
+    image_templates:
+      - "hev/tpuff:{{ .Version }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+  - id: exporter-arm64
+    goos: linux
+    goarch: arm64
+    ids: [tpuff]
+    dockerfile: Dockerfile.exporter
+    image_templates:
+      - "hev/tpuff:{{ .Version }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "hev/tpuff:{{ .Version }}"
+    image_templates:
+      - "hev/tpuff:{{ .Version }}-amd64"
+      - "hev/tpuff:{{ .Version }}-arm64"
+  - name_template: "hev/tpuff:latest"
+    image_templates:
+      - "hev/tpuff:{{ .Version }}-amd64"
+      - "hev/tpuff:{{ .Version }}-arm64"
+
 release:
   github:
     owner: hev
