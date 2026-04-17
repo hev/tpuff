@@ -40,11 +40,13 @@ You can configure the exporter using environment variables or command-line flags
 - `TURBOPUFFER_API_KEY` (required): Your Turbopuffer API key
 
 **Command Line Flags:**
-- `--port <number>`: HTTP server port (default: 9876)
-- `--region <region>`: Query specific region (default: TURBOPUFFER_REGION env)
-- `--all-regions`: Query all Turbopuffer regions (not recommended for production)
-- `--interval <seconds>`: Metric refresh interval (default: 60)
-- `--timeout <seconds>`: API request timeout per region (default: 30)
+- `--port, -p <number>`: HTTP server port (default: 9876)
+- `--region, -r <region>`: Query specific region (default: TURBOPUFFER_REGION env)
+- `--all-regions, -A`: Query all Turbopuffer regions (not recommended for production)
+- `--interval, -i <seconds>`: Metric refresh interval (default: 60)
+- `--timeout, -t <seconds>`: API request timeout per region (default: 30)
+- `--include-recall`: Include vector recall estimation metrics (slower)
+- `--recall-interval <seconds>`: Recall refresh interval (default: 3600)
 
 ### Endpoints
 
@@ -57,6 +59,7 @@ You can configure the exporter using environment variables or command-line flags
 - `turbopuffer_namespace_rows` - Approximate number of rows in namespace
 - `turbopuffer_namespace_logical_bytes` - Approximate logical storage size in bytes
 - `turbopuffer_namespace_unindexed_bytes` - Number of unindexed bytes
+- `turbopuffer_namespace_recall` - Average vector recall estimation (0-1), only with `--include-recall`
 - `turbopuffer_namespace_info` - Namespace information with labels
 - `turbopuffer_exporter_scrape_duration_seconds` - Time taken to fetch metrics
 - `turbopuffer_exporter_last_scrape_timestamp_seconds` - Unix timestamp of last scrape
@@ -123,16 +126,29 @@ services:
 
 ## Building from Source
 
-To build the exporter locally:
+The exporter is just `tpuff export`. You can either run it directly or build
+the Docker image.
+
+**Directly:**
 
 ```bash
-# Build the Docker image
-docker build -f Dockerfile.exporter -t tpuff-exporter:latest .
+go install github.com/hev/tpuff@latest
+tpuff export --region aws-us-east-1
+```
 
-# Run locally
+**Docker image (local):**
+
+The shipped `Dockerfile.exporter` expects a pre-built binary in the build
+context — `make docker` handles this for you:
+
+```bash
+make docker                          # builds hevmind/tpuff-exporter:dev
 docker run -d \
   --name tpuff-exporter \
   -p 9876:9876 \
   -e TURBOPUFFER_API_KEY=your_api_key \
-  tpuff-exporter:latest
+  hevmind/tpuff-exporter:dev
 ```
+
+Release images are pushed manually to Docker Hub by maintainers using
+`make docker` + `docker push`.

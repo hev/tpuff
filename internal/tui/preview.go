@@ -3,7 +3,9 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -13,6 +15,10 @@ type previewModel struct {
 	content  string
 	viewport viewport.Model
 	ready    bool
+
+	// transient status (copy feedback)
+	toast       string
+	toastExpiry time.Time
 }
 
 func newPreviewModel(docID, content string) previewModel {
@@ -48,6 +54,16 @@ func (m previewModel) update(msg tea.Msg) previewModel {
 	case tea.WindowSizeMsg:
 		m.setSize(msg.Width, msg.Height)
 		return m
+	case tea.KeyMsg:
+		if msg.String() == "y" {
+			if err := clipboard.WriteAll(m.content); err != nil {
+				m.toast = "copy failed: " + err.Error()
+			} else {
+				m.toast = "Copied document to clipboard"
+			}
+			m.toastExpiry = time.Now().Add(2 * time.Second)
+			return m
+		}
 	}
 	if m.ready {
 		var cmd tea.Cmd
@@ -72,7 +88,11 @@ func (m previewModel) view(width, height int) string {
 	b.WriteString("\n\n")
 
 	scrollPct := fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100)
-	help := fmt.Sprintf("↑/k up • ↓/j down • enter full view • esc back  %s", scrollPct)
+	help := fmt.Sprintf("↑/k up • ↓/j down • enter full view • y copy • esc back  %s", scrollPct)
+	if m.toast != "" && time.Now().Before(m.toastExpiry) {
+		b.WriteString(statusStyle.Render(m.toast))
+		b.WriteString("\n")
+	}
 	b.WriteString(helpStyle.Render(help))
 
 	return b.String()

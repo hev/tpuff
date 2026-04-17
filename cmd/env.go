@@ -6,11 +6,14 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/hev/tpuff/internal/config"
 	"github.com/hev/tpuff/internal/output"
 	"github.com/hev/tpuff/internal/regions"
 	"github.com/spf13/cobra"
 )
+
+var activeMarkerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("78")) // green
 
 var envCmd = &cobra.Command{
 	Use:   "env",
@@ -142,7 +145,11 @@ func runEnvList(cmd *cobra.Command, args []string) error {
 	for _, e := range envs {
 		marker := ""
 		if e.IsActive {
-			marker = "*"
+			if output.IsPlain() {
+				marker = "*"
+			} else {
+				marker = activeMarkerStyle.Render("*")
+			}
 		}
 		rows = append(rows, []string{
 			marker,

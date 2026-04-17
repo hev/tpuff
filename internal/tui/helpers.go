@@ -8,7 +8,29 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
+
+// sanitizeLine collapses newlines, tabs, and other control chars to single spaces,
+// and trims surrounding whitespace — so a value shown as one row doesn't wrap.
+func sanitizeLine(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	prevSpace := false
+	for _, r := range s {
+		if r == '\r' || r == '\n' || r == '\t' || unicode.IsControl(r) || unicode.IsSpace(r) {
+			if !prevSpace {
+				b.WriteByte(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		b.WriteRune(r)
+		prevSpace = false
+	}
+	return strings.TrimSpace(b.String())
+}
 
 var vectorTypeRe = regexp.MustCompile(`^\[\d+\]f(?:16|32)$`)
 
@@ -75,19 +97,26 @@ func formatDocJSON(doc map[string]any, schemaDict map[string]any) string {
 	return string(b)
 }
 
-// truncate truncates a string to maxLen with ellipsis.
+// truncate truncates a string to maxLen runes (not bytes) with ellipsis.
+// Safe against cutting multi-byte UTF-8 sequences in half.
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
 	if maxLen <= 3 {
-		return s[:maxLen]
+		runes := []rune(s)
+		return string(runes[:maxLen])
 	}
-	return s[:maxLen-3] + "..."
+	runes := []rune(s)
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // docPreviewLine creates a short one-line preview of a document.
 // If contentField is set, that field's value is shown directly.
+// Always returns a single line of printable characters (no embedded newlines).
 func docPreviewLine(doc map[string]any, schemaDict map[string]any, contentField string, maxLen int) string {
 	// If a content field is configured, show just that field's value
 	if contentField != "" {
@@ -100,7 +129,7 @@ func docPreviewLine(doc map[string]any, schemaDict map[string]any, contentField 
 				b, _ := json.Marshal(v)
 				s = string(b)
 			}
-			return truncate(s, maxLen)
+			return truncate(sanitizeLine(s), maxLen)
 		}
 	}
 
@@ -128,7 +157,7 @@ func docPreviewLine(doc map[string]any, schemaDict map[string]any, contentField 
 		parts = append(parts, fmt.Sprintf("%s=%s", k, vs))
 	}
 	line := strings.Join(parts, " ")
-	return truncate(line, maxLen)
+	return truncate(sanitizeLine(line), maxLen)
 }
 
 // formatBytes formats byte count to human-readable string.
@@ -173,6 +202,52 @@ func formatUpdatedAt(t time.Time) string {
 		return t.Format("3:04 pm")
 	}
 	return t.Format("Jan 2, 2006")
+}
+
+// ftsFields returns the list of attribute names in the schema that have
+// full_text_search configured (in the order they appear in the schema map).
+func ftsFields(schemaData map[string]any) []string {
+	var out []string
+	for name, cfg := range schemaData {
+		has := false
+		switch v := cfg.(type) {
+		case map[string]any:
+			if _, ok := v["full_text_search"]; ok {
+				has = true
+			}
+		default:
+			if b, err := json.Marshal(v); err == nil {
+				var obj struct {
+					FullTextSearch any `json:"full_text_search"`
+				}
+				if json.Unmarshal(b, &obj) == nil && obj.FullTextSearch != nil {
+					has = true
+				}
+			}
+		}
+		if has {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// resolveFTSField picks an FTS-eligible field, preferring contentField when it
+// is FTS-enabled, else the first FTS-enabled field. Returns "" if none exist.
+func resolveFTSField(schemaData map[string]any, contentField string) string {
+	fields := ftsFields(schemaData)
+	if len(fields) == 0 {
+		return ""
+	}
+	if contentField != "" {
+		for _, f := range fields {
+			if f == contentField {
+				return f
+			}
+		}
+	}
+	return fields[0]
 }
 
 // extractVectorInfo extracts vector attribute name and dimensions from schema.

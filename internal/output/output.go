@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
 )
 
@@ -50,15 +51,17 @@ func PrintTable(headers []string, rows [][]string) {
 		return
 	}
 
-	// Calculate column widths
+	// Calculate column widths using visible width (ANSI-aware).
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = len(h)
+		widths[i] = lipgloss.Width(h)
 	}
 	for _, row := range rows {
 		for i, cell := range row {
-			if i < len(widths) && len(cell) > widths[i] {
-				widths[i] = len(cell)
+			if i < len(widths) {
+				if w := lipgloss.Width(cell); w > widths[i] {
+					widths[i] = w
+				}
 			}
 		}
 	}
@@ -70,7 +73,7 @@ func PrintTable(headers []string, rows [][]string) {
 			headerLine.WriteString(" | ")
 			sepLine.WriteString("-+-")
 		}
-		headerLine.WriteString(fmt.Sprintf("%-*s", widths[i], h))
+		headerLine.WriteString(padVisible(h, widths[i]))
 		sepLine.WriteString(strings.Repeat("-", widths[i]))
 	}
 	fmt.Println(headerLine.String())
@@ -84,13 +87,22 @@ func PrintTable(headers []string, rows [][]string) {
 				line.WriteString(" | ")
 			}
 			if i < len(widths) {
-				line.WriteString(fmt.Sprintf("%-*s", widths[i], cell))
+				line.WriteString(padVisible(cell, widths[i]))
 			} else {
 				line.WriteString(cell)
 			}
 		}
 		fmt.Println(line.String())
 	}
+}
+
+// padVisible left-justifies s to width w counting visible width (ignoring ANSI).
+func padVisible(s string, w int) string {
+	vw := lipgloss.Width(s)
+	if vw >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-vw)
 }
 
 // StatusPrint prints a message only in human mode.

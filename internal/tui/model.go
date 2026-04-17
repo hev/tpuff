@@ -4,13 +4,15 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/hev/tpuff/internal/client"
 	"github.com/hev/tpuff/internal/config"
 )
 
 type view int
 
 const (
-	viewNamespaces view = iota
+	viewEnvs view = iota
+	viewNamespaces
 	viewDocuments
 	viewPreview
 	viewDocument
@@ -25,6 +27,7 @@ type Model struct {
 	height int
 
 	// Sub-models
+	envs       envsModel
 	namespaces namespacesModel
 	documents  documentsModel
 	preview    previewModel
@@ -39,6 +42,15 @@ type Model struct {
 
 // New creates a new TUI model.
 func New(region string) Model {
+	// Start on env-switcher only if >1 env is configured AND no region override is set
+	// (a region override implies the caller knows which env/region they want).
+	envs := config.ListEnvs()
+	if len(envs) > 1 && region == "" {
+		return Model{
+			view: viewEnvs,
+			envs: newEnvsModel(),
+		}
+	}
 	return Model{
 		view:       viewNamespaces,
 		region:     region,
@@ -47,6 +59,9 @@ func New(region string) Model {
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.view == viewEnvs {
+		return nil
+	}
 	return m.namespaces.init(m.region)
 }
 
@@ -63,6 +78,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.view {
+	case viewEnvs:
+		return m.updateEnvs(msg)
 	case viewNamespaces:
 		return m.updateNamespaces(msg)
 	case viewDocuments:
@@ -79,6 +96,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	switch m.view {
+	case viewEnvs:
+		return m.envs.view(m.width, m.height)
 	case viewNamespaces:
 		return m.namespaces.view(m.width, m.height)
 	case viewDocuments:
@@ -91,6 +110,31 @@ func (m Model) View() string {
 		return m.schema.view(m.width, m.height)
 	}
 	return ""
+}
+
+func (m Model) updateEnvs(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q":
+			return m, tea.Quit
+		case "enter":
+			if e := m.envs.selected(); e != nil {
+				if err := config.SetActive(e.Name); err != nil {
+					// Stay in env view on error; leader will show next refresh
+					return m, nil
+				}
+				client.ClearCache()
+				m.region = "" // selected env takes precedence over any prior override
+				m.namespaces = newNamespacesModel()
+				m.view = viewNamespaces
+				return m, m.namespaces.init(m.region)
+			}
+		}
+	}
+	var cmd tea.Cmd
+	m.envs, cmd = m.envs.update(msg)
+	return m, cmd
 }
 
 func (m Model) updateNamespaces(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -119,6 +163,12 @@ func (m Model) updateNamespaces(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = viewSchema
 				return m, m.schema.init(m.region)
 			}
+		case msg.String() == "e" && !m.namespaces.filtering:
+			if len(config.ListEnvs()) > 1 {
+				m.envs = newEnvsModel()
+				m.view = viewEnvs
+				return m, nil
+			}
 		}
 	}
 	var cmd tea.Cmd
@@ -129,8 +179,20 @@ func (m Model) updateNamespaces(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateDocuments(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// While the search input is open, let the docs model consume keys
+		// (esc/enter there control the prompt, not navigation).
+		if m.documents.searching {
+			break
+		}
 		switch {
-		case msg.String() == "esc" || msg.String() == "q":
+		case msg.String() == "esc":
+			// If a search is active, clear it instead of navigating back.
+			if m.documents.searchActive {
+				break
+			}
+			m.view = viewNamespaces
+			return m, nil
+		case msg.String() == "q":
 			m.view = viewNamespaces
 			return m, nil
 		case msg.String() == "enter":

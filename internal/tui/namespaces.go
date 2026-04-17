@@ -235,7 +235,7 @@ func (m namespacesModel) view(width, height int) string {
 		b.WriteString(statusStyle.Render(fmt.Sprintf("Filtered: %d/%d", len(visible), len(m.items))))
 		b.WriteString("  ")
 	}
-	b.WriteString(helpStyle.Render("↑/k up • ↓/j down • enter select • s schema • / filter • q quit"))
+	b.WriteString(helpStyle.Render("↑/k up • ↓/j down • enter select • s schema • / filter • e env • q quit"))
 
 	return b.String()
 }

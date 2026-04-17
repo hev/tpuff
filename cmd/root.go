@@ -9,7 +9,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "0.5.0"
+// version is overridden at build time via -ldflags "-X github.com/hev/tpuff/cmd.version=x.y.z"
+var version = "dev"
 
 var (
 	debugFlag      bool
