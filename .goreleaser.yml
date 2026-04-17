@@ -56,7 +56,7 @@ dockers:
     ids: [tpuff]
     dockerfile: Dockerfile.exporter
     image_templates:
-      - "hev/tpuff:{{ .Version }}-amd64"
+      - "hevmind/tpuff:{{ .Version }}-amd64"
     build_flag_templates:
       - "--platform=linux/amd64"
 
@@ -66,19 +66,19 @@ dockers:
     ids: [tpuff]
     dockerfile: Dockerfile.exporter
     image_templates:
-      - "hev/tpuff:{{ .Version }}-arm64"
+      - "hevmind/tpuff:{{ .Version }}-arm64"
     build_flag_templates:
       - "--platform=linux/arm64"
 
 docker_manifests:
-  - name_template: "hev/tpuff:{{ .Version }}"
+  - name_template: "hevmind/tpuff:{{ .Version }}"
     image_templates:
-      - "hev/tpuff:{{ .Version }}-amd64"
-      - "hev/tpuff:{{ .Version }}-arm64"
-  - name_template: "hev/tpuff:latest"
+      - "hevmind/tpuff:{{ .Version }}-amd64"
+      - "hevmind/tpuff:{{ .Version }}-arm64"
+  - name_template: "hevmind/tpuff:latest"
     image_templates:
-      - "hev/tpuff:{{ .Version }}-amd64"
-      - "hev/tpuff:{{ .Version }}-arm64"
+      - "hevmind/tpuff:{{ .Version }}-amd64"
+      - "hevmind/tpuff:{{ .Version }}-arm64"
 
 release:
   github:
