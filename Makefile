@@ -1,0 +1,43 @@
+.PHONY: build install clean test vet lint docker help
+
+BINARY := tpuff
+ALIAS  := tpuf
+BINDIR := $(shell go env GOBIN)
+ifeq ($(BINDIR),)
+BINDIR := $(shell go env GOPATH)/bin
+endif
+
+DOCKER_IMAGE ?= hevmind/tpuff-exporter
+DOCKER_TAG   ?= dev
+
+build:
+	go build -o $(BINARY) .
+
+install:
+	go install .
+	ln -sf $(BINARY) $(BINDIR)/$(ALIAS)
+
+test:
+	go test ./... -race -count=1
+
+vet:
+	go vet ./...
+
+lint:
+	golangci-lint run ./...
+
+docker: build
+	docker build -f Dockerfile.exporter -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+
+clean:
+	rm -f $(BINARY)
+
+help:
+	@echo "Available targets:"
+	@echo "  build      - Build the tpuff binary"
+	@echo "  install    - Install to GOPATH/bin (also links tpuf -> tpuff)"
+	@echo "  test       - Run unit tests with race detector"
+	@echo "  vet        - Run go vet"
+	@echo "  lint       - Run golangci-lint"
+	@echo "  docker     - Build the exporter Docker image ($(DOCKER_IMAGE):$(DOCKER_TAG))"
+	@echo "  clean      - Remove build artifacts"
