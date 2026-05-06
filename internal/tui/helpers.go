@@ -206,14 +206,34 @@ func formatUpdatedAt(t time.Time) string {
 
 // ftsFields returns the list of attribute names in the schema that have
 // full_text_search configured (in the order they appear in the schema map).
+// ftsEnabled checks whether a full_text_search value represents an actually
+// enabled FTS config (not just a zeroed-out default object from the API).
+func ftsEnabled(v any) bool {
+	switch fts := v.(type) {
+	case bool:
+		return fts
+	case map[string]any:
+		// The API returns a zeroed-out object for all fields; only consider it
+		// enabled if tokenizer or language is set (non-empty string).
+		if t, _ := fts["tokenizer"].(string); t != "" {
+			return true
+		}
+		if l, _ := fts["language"].(string); l != "" {
+			return true
+		}
+		return false
+	}
+	return false
+}
+
 func ftsFields(schemaData map[string]any) []string {
 	var out []string
 	for name, cfg := range schemaData {
 		has := false
 		switch v := cfg.(type) {
 		case map[string]any:
-			if _, ok := v["full_text_search"]; ok {
-				has = true
+			if ftsVal, ok := v["full_text_search"]; ok {
+				has = ftsEnabled(ftsVal)
 			}
 		default:
 			if b, err := json.Marshal(v); err == nil {
@@ -221,7 +241,7 @@ func ftsFields(schemaData map[string]any) []string {
 					FullTextSearch any `json:"full_text_search"`
 				}
 				if json.Unmarshal(b, &obj) == nil && obj.FullTextSearch != nil {
-					has = true
+					has = ftsEnabled(obj.FullTextSearch)
 				}
 			}
 		}

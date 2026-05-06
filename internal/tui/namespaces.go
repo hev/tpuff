@@ -171,15 +171,16 @@ func (m namespacesModel) view(width, height int) string {
 	rowsW := 10
 	sizeW := 12
 	statusW := 14
+	unindexedW := 12
 	updatedW := 16
 
 	// Adapt name width to terminal
 	if width > 100 {
-		nameW = width - rowsW - sizeW - statusW - updatedW - 16
+		nameW = width - rowsW - sizeW - statusW - unindexedW - updatedW - 18
 	}
 
-	header := fmt.Sprintf("  %-*s %*s %*s %-*s %*s",
-		nameW, "Name", rowsW, "Rows", sizeW, "Size", statusW, "Index Status", updatedW, "Updated")
+	header := fmt.Sprintf("  %-*s %*s %*s %-*s %*s %*s",
+		nameW, "Name", rowsW, "Rows", sizeW, "Size", statusW, "Index Status", unindexedW, "Unindexed", updatedW, "Updated")
 	b.WriteString(columnHeaderStyle.Render(header))
 	b.WriteString("\n")
 
@@ -204,15 +205,20 @@ func (m namespacesModel) view(width, height int) string {
 		status := "N/A"
 		updated := "N/A"
 
+		unindexed := ""
+
 		if item.Metadata != nil {
 			rows = formatNumber(item.Metadata.ApproxRowCount)
 			size = formatBytes(item.Metadata.ApproxLogicalBytes)
 			status = metadata.GetIndexStatus(item.Metadata)
 			updated = formatUpdatedAt(item.Metadata.UpdatedAt)
+			if ub := metadata.GetUnindexedBytes(item.Metadata); ub > 0 {
+				unindexed = formatBytes(ub)
+			}
 		}
 
-		line := fmt.Sprintf("  %-*s %*s %*s %-*s %*s",
-			nameW, name, rowsW, rows, sizeW, size, statusW, status, updatedW, updated)
+		line := fmt.Sprintf("  %-*s %*s %*s %-*s %*s %*s",
+			nameW, name, rowsW, rows, sizeW, size, statusW, status, unindexedW, unindexed, updatedW, updated)
 
 		if i == m.cursor {
 			b.WriteString(selectedStyle.Render("▸ " + line[2:]))

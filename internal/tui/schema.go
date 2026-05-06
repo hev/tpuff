@@ -84,7 +84,7 @@ func parseSchemaAttrs(schema map[string]any) []schemaAttr {
 			} else {
 				a.filterable = "-"
 			}
-			if _, ok := v["full_text_search"]; ok {
+			if ftsVal, ok := v["full_text_search"]; ok && ftsEnabled(ftsVal) {
 				a.fts = "yes"
 			} else {
 				a.fts = "-"
@@ -103,7 +103,7 @@ func parseSchemaAttrs(schema map[string]any) []schemaAttr {
 				} else {
 					a.filterable = "-"
 				}
-				if obj.FullTextSearch != nil {
+				if obj.FullTextSearch != nil && ftsEnabled(obj.FullTextSearch) {
 					a.fts = "yes"
 				} else {
 					a.fts = "-"

@@ -50,6 +50,9 @@ func runGet(cmd *cobra.Command, args []string) error {
 		Filters:           turbopuffer.NewFilterEq("id", id),
 		TopK:              turbopuffer.Int(1),
 		IncludeAttributes: turbopuffer.IncludeAttributesParam{Bool: turbopuffer.Bool(true)},
+		Consistency: turbopuffer.NamespaceQueryParamsConsistency{
+			Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+		},
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)

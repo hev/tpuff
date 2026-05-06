@@ -59,6 +59,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 			RankBy:            turbopuffer.NewRankByAttribute("id", turbopuffer.RankByAttributeOrderAsc),
 			IncludeAttributes: turbopuffer.IncludeAttributesParam{StringArray: []string{field}},
 			TopK:              turbopuffer.Int(int64(pageSize)),
+			Consistency: turbopuffer.NamespaceQueryParamsConsistency{
+				Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+			},
 		}
 
 		if lastID != "" {

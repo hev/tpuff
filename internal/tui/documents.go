@@ -98,6 +98,9 @@ func fetchDocuments(namespace, region string, topK int, schemaDict map[string]an
 		RankBy:            turbopuffer.NewRankByVector(vecAttr, zeroVec),
 		TopK:              turbopuffer.Int(int64(topK)),
 		ExcludeAttributes: []string{vecAttr},
+		Consistency: turbopuffer.NamespaceQueryParamsConsistency{
+			Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+		},
 	})
 	if err != nil {
 		return documentsErrMsg{err: err}
@@ -121,6 +124,9 @@ func runFTSSearch(namespace, region, field, query string, topK int, schemaDict m
 		params := turbopuffer.NamespaceQueryParams{
 			TopK:   turbopuffer.Int(int64(topK)),
 			RankBy: turbopuffer.NewRankByTextBM25(field, query),
+			Consistency: turbopuffer.NamespaceQueryParamsConsistency{
+				Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+			},
 		}
 		if vecAttr, _ := extractVectorInfo(schemaDict); vecAttr != "" {
 			params.ExcludeAttributes = []string{vecAttr}

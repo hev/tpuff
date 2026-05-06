@@ -135,6 +135,9 @@ func displayNamespaceDocuments(ctx context.Context, namespace string, topK int, 
 		RankBy:            turbopuffer.NewRankByVector(vecAttr, zeroVec),
 		TopK:              turbopuffer.Int(int64(topK)),
 		ExcludeAttributes: []string{vecAttr},
+		Consistency: turbopuffer.NamespaceQueryParamsConsistency{
+			Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+		},
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)

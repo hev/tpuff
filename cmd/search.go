@@ -82,6 +82,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	var queryParams turbopuffer.NamespaceQueryParams
 	queryParams.TopK = turbopuffer.Int(int64(topK))
+	queryParams.Consistency = turbopuffer.NamespaceQueryParamsConsistency{
+		Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+	}
 
 	if useFTS {
 		output.StatusPrint(fmt.Sprintf("Mode: Full-text search (BM25) on field \"%s\"\n", ftsField))

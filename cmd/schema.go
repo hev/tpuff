@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/hev/tpuff/internal/client"
 	"github.com/hev/tpuff/internal/output"
 	"github.com/hev/tpuff/internal/schema"
 	"github.com/spf13/cobra"
 	"github.com/turbopuffer/turbopuffer-go"
+	"github.com/turbopuffer/turbopuffer-go/packages/param"
 )
 
 var schemaCmd = &cobra.Command{
@@ -198,9 +200,15 @@ func getCurrentSchema(ctx context.Context, ns *turbopuffer.Namespace) map[string
 	if len(md.Schema) == 0 {
 		return nil
 	}
-	result := make(map[string]any)
-	for k, v := range md.Schema {
-		result[k] = v
+	// Marshal SDK structs to JSON, then unmarshal back to map[string]any
+	// so they're comparable to schemas loaded from JSON files.
+	b, err := json.Marshal(md.Schema)
+	if err != nil {
+		return nil
+	}
+	var result map[string]any
+	if err := json.Unmarshal(b, &result); err != nil {
+		return nil
 	}
 	return result
 }
@@ -220,6 +228,9 @@ func displaySchemaDiff(diff schema.SchemaDiff, namespace string) {
 	for k := range diff.Additions {
 		allAttrs[k] = true
 	}
+	for k := range diff.Modifications {
+		allAttrs[k] = true
+	}
 	for k := range diff.Conflicts {
 		allAttrs[k] = true
 	}
@@ -231,12 +242,17 @@ func displaySchemaDiff(diff schema.SchemaDiff, namespace string) {
 	sort.Strings(sorted)
 
 	for _, attr := range sorted {
-		if v, ok := diff.Unchanged[attr]; ok {
-			fmt.Printf("  %s: %s\n", attr, v)
+		if _, ok := diff.Unchanged[attr]; ok {
+			fmt.Printf("  %s\n", attr)
 		} else if v, ok := diff.Additions[attr]; ok {
-			fmt.Printf("+%s: %s  (new)\n", attr, v)
+			fmt.Printf("+ %s: %s  (new)\n", attr, v)
+		} else if m, ok := diff.Modifications[attr]; ok {
+			fmt.Printf("~ %s (%s):\n", attr, m.BaseType)
+			for _, c := range m.Changes {
+				fmt.Printf("    %s: %s -> %s\n", c.Key, c.OldValue, c.NewValue)
+			}
 		} else if c, ok := diff.Conflicts[attr]; ok {
-			fmt.Printf("!%s: %s -> %s  (type change not allowed)\n", attr, c[0], c[1])
+			fmt.Printf("! %s: %s -> %s  (type change not allowed)\n", attr, c[0], c[1])
 		}
 	}
 	fmt.Println()
@@ -282,11 +298,12 @@ func applySchemaToSingle(ctx context.Context, namespace string, newSchema map[st
 }
 
 type batchApplyResult struct {
-	namespace string
-	success   bool
-	additions int
-	conflicts int
-	err       string
+	namespace     string
+	success       bool
+	additions     int
+	modifications int
+	conflicts     int
+	err           string
 }
 
 func applySchemaToMultiple(ctx context.Context, namespaces []string, newSchema map[string]any, region string, dryRun, yes, continueOnError bool) {
@@ -307,9 +324,10 @@ func applySchemaToMultiple(ctx context.Context, namespaces []string, newSchema m
 		diff := schema.ComputeSchemaDiff(currentSchema, newSchema)
 
 		r := batchApplyResult{
-			namespace: nsName,
-			additions: len(diff.Additions),
-			conflicts: len(diff.Conflicts),
+			namespace:     nsName,
+			additions:     len(diff.Additions),
+			modifications: len(diff.Modifications),
+			conflicts:     len(diff.Conflicts),
 		}
 
 		if diff.HasConflicts() {
@@ -349,7 +367,7 @@ func applySchemaToMultiple(ctx context.Context, namespaces []string, newSchema m
 	// Find namespaces to update
 	var toUpdate []int
 	for i, r := range results {
-		if r.additions > 0 && r.conflicts == 0 && r.err == "" {
+		if (r.additions > 0 || r.modifications > 0) && r.conflicts == 0 && r.err == "" {
 			toUpdate = append(toUpdate, i)
 		}
 	}
@@ -413,7 +431,7 @@ func displayBatchSummary(results []batchApplyResult, dryRun bool) {
 		} else if r.err != "" {
 			changes = "N/A"
 			status = fmt.Sprintf("error: %s", r.err)
-		} else if r.additions == 0 {
+		} else if r.additions == 0 && r.modifications == 0 {
 			changes = "no changes"
 			if dryRun {
 				status = "would skip"
@@ -421,7 +439,14 @@ func displayBatchSummary(results []batchApplyResult, dryRun bool) {
 				status = "up-to-date"
 			}
 		} else {
-			changes = fmt.Sprintf("+%d attribute(s)", r.additions)
+			var parts []string
+			if r.additions > 0 {
+				parts = append(parts, fmt.Sprintf("+%d new", r.additions))
+			}
+			if r.modifications > 0 {
+				parts = append(parts, fmt.Sprintf("~%d modified", r.modifications))
+			}
+			changes = strings.Join(parts, ", ")
 			if dryRun {
 				status = "would apply"
 			} else if r.success {
@@ -450,11 +475,23 @@ func writeSchemaErr(ctx context.Context, ns *turbopuffer.Namespace, s map[string
 		schemaParam[k] = toAttributeSchemaParam(v)
 	}
 
+	row := turbopuffer.RowParam{"id": "__schema_placeholder__"}
+
+	// If schema has a vector field, include a zero vector to satisfy the constraint.
+	for attrName, attrType := range s {
+		baseType := schema.ExtractBaseType(attrType)
+		if schema.VectorTypePattern.MatchString(baseType) {
+			dims := schema.ParseVectorDims(baseType)
+			if dims > 0 {
+				vec := make([]float32, dims)
+				row[attrName] = vec
+			}
+		}
+	}
+
 	_, err := ns.Write(ctx, turbopuffer.NamespaceWriteParams{
-		UpsertRows: []turbopuffer.RowParam{
-			{"id": "__schema_placeholder__"},
-		},
-		Schema: schemaParam,
+		UpsertRows: []turbopuffer.RowParam{row},
+		Schema:     schemaParam,
 	})
 	return err
 }
@@ -471,12 +508,71 @@ func toAttributeSchemaParam(v any) turbopuffer.AttributeSchemaConfigParam {
 			p.Type = t
 		}
 		if fts, ok := val["full_text_search"]; ok {
-			if b, ok := fts.(bool); ok && b {
-				p.FullTextSearch = &turbopuffer.FullTextSearchConfigParam{}
+			switch ftsVal := fts.(type) {
+			case bool:
+				if ftsVal {
+					p.FullTextSearch = &turbopuffer.FullTextSearchConfigParam{}
+				}
+			case map[string]any:
+				ftsParam := &turbopuffer.FullTextSearchConfigParam{}
+				if v, ok := ftsVal["ascii_folding"].(bool); ok {
+					ftsParam.AsciiFolding = turbopuffer.Bool(v)
+				}
+				if v, ok := ftsVal["b"].(float64); ok && v != 0 {
+					ftsParam.B = turbopuffer.Float(v)
+				}
+				if v, ok := ftsVal["case_sensitive"].(bool); ok {
+					ftsParam.CaseSensitive = turbopuffer.Bool(v)
+				}
+				if v, ok := ftsVal["k1"].(float64); ok && v != 0 {
+					ftsParam.K1 = turbopuffer.Float(v)
+				}
+				if v, ok := ftsVal["remove_stopwords"].(bool); ok {
+					ftsParam.RemoveStopwords = turbopuffer.Bool(v)
+				}
+				if v, ok := ftsVal["stemming"].(bool); ok {
+					ftsParam.Stemming = turbopuffer.Bool(v)
+				}
+				if v, ok := ftsVal["language"].(string); ok && v != "" {
+					ftsParam.Language = turbopuffer.Language(v)
+				}
+				if v, ok := ftsVal["max_token_length"].(float64); ok && v != 0 {
+					ftsParam.MaxTokenLength = turbopuffer.Int(int64(v))
+				}
+				if v, ok := ftsVal["tokenizer"].(string); ok && v != "" {
+					ftsParam.Tokenizer = turbopuffer.Tokenizer(v)
+				}
+				// Only set if there's actual config (not all zeroes)
+				hasConfig := ftsParam.B.Valid() || ftsParam.K1.Valid() ||
+					ftsParam.Language != "" || ftsParam.Tokenizer != "" ||
+					ftsParam.MaxTokenLength.Valid()
+				if hasConfig {
+					p.FullTextSearch = ftsParam
+				}
 			}
 		}
 		if f, ok := val["filterable"].(bool); ok {
 			p.Filterable = turbopuffer.Bool(f)
+		}
+		if ann, ok := val["ann"]; ok {
+			switch a := ann.(type) {
+			case bool:
+				if a {
+					p.Ann = param.Override[turbopuffer.AttributeSchemaConfigAnnParam](true)
+				}
+			case map[string]any:
+				if dm, ok := a["distance_metric"].(string); ok && dm != "" {
+					p.Ann = turbopuffer.AttributeSchemaConfigAnnParam{
+						DistanceMetric: turbopuffer.DistanceMetric(dm),
+					}
+				}
+			}
+		}
+		if g, ok := val["glob"].(bool); ok {
+			p.Glob = turbopuffer.Bool(g)
+		}
+		if r, ok := val["regex"].(bool); ok {
+			p.Regex = turbopuffer.Bool(r)
 		}
 		return p
 	default:

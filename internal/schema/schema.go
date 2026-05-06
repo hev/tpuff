@@ -11,10 +11,13 @@ import (
 
 // Valid simple schema types.
 var ValidSimpleTypes = map[string]bool{
-	"string": true,
-	"uint64": true,
-	"uuid":   true,
-	"bool":   true,
+	"string":   true,
+	"[]string": true,
+	"uint64":   true,
+	"int":      true,
+	"float":    true,
+	"uuid":     true,
+	"bool":     true,
 }
 
 // VectorTypePattern matches vector types like [1536]f32 or [768]f16.
@@ -26,13 +29,30 @@ var ValidTypeKeys = map[string]bool{
 	"full_text_search": true,
 	"regex_index":      true,
 	"filterable":       true,
+	"ann":              true,
+	"glob":             true,
+	"regex":            true,
+}
+
+// PropertyChange represents a single property change within an attribute.
+type PropertyChange struct {
+	Key      string
+	OldValue string
+	NewValue string
+}
+
+// AttrModification holds the details of a modified attribute.
+type AttrModification struct {
+	BaseType string
+	Changes  []PropertyChange
 }
 
 // SchemaDiff holds the result of comparing two schemas.
 type SchemaDiff struct {
-	Unchanged map[string]string      // attr -> display type
-	Additions map[string]string      // attr -> display type
-	Conflicts map[string][2]string   // attr -> [old_type, new_type]
+	Unchanged     map[string]string         // attr -> display type
+	Additions     map[string]string         // attr -> display type (new fields)
+	Modifications map[string]AttrModification // attr -> modification details
+	Conflicts     map[string][2]string      // attr -> [old_type, new_type] (base type change — blocked)
 }
 
 // HasConflicts returns true if there are any type conflicts.
@@ -40,9 +60,14 @@ func (d *SchemaDiff) HasConflicts() bool {
 	return len(d.Conflicts) > 0
 }
 
-// HasChanges returns true if there are any additions or conflicts.
+// HasModifications returns true if there are any property modifications.
+func (d *SchemaDiff) HasModifications() bool {
+	return len(d.Modifications) > 0
+}
+
+// HasChanges returns true if there are any additions, modifications, or conflicts.
 func (d *SchemaDiff) HasChanges() bool {
-	return len(d.Additions) > 0 || len(d.Conflicts) > 0
+	return len(d.Additions) > 0 || len(d.Modifications) > 0 || len(d.Conflicts) > 0
 }
 
 // NormalizeSchemaType normalizes a schema type to a comparable string.
@@ -130,9 +155,14 @@ func ValidateSchemaType(attrName string, attrType any) []string {
 
 		// Validate specific option types
 		if fts, ok := v["full_text_search"]; ok {
-			if _, isBool := fts.(bool); !isBool {
+			switch fts.(type) {
+			case bool:
+				// ok
+			case map[string]any:
+				// ok — full config object from API
+			default:
 				errors = append(errors, fmt.Sprintf(
-					"Attribute '%s': 'full_text_search' must be a boolean", attrName))
+					"Attribute '%s': 'full_text_search' must be a boolean or object", attrName))
 			}
 		}
 		if ri, ok := v["regex_index"]; ok {
@@ -169,16 +199,163 @@ func ValidateSchema(schemaData map[string]any) []string {
 		errors = append(errors, ValidateSchemaType(attrName, attrType)...)
 	}
 
+	// The "id" attribute must have filterable: true if present.
+	if idType, ok := schemaData["id"]; ok {
+		if m, isMap := idType.(map[string]any); isMap {
+			if f, hasFilt := m["filterable"]; hasFilt {
+				if b, isBool := f.(bool); isBool && !b {
+					errors = append(errors, "Attribute 'id': must have \"filterable\" set to true")
+				}
+			}
+		}
+	}
+
+	// Vector attributes must have ann: true.
+	for attrName, attrType := range schemaData {
+		m, isMap := attrType.(map[string]any)
+		if !isMap {
+			continue
+		}
+		baseType, _ := m["type"].(string)
+		if !VectorTypePattern.MatchString(baseType) {
+			continue
+		}
+		ann, hasAnn := m["ann"]
+		if !hasAnn {
+			errors = append(errors, fmt.Sprintf(
+				"Attribute '%s': vector type must have \"ann\" set to true", attrName))
+		} else if b, isBool := ann.(bool); isBool && !b {
+			errors = append(errors, fmt.Sprintf(
+				"Attribute '%s': vector type must have \"ann\" set to true", attrName))
+		}
+	}
+
 	return errors
+}
+
+// ExtractBaseType returns the base type string from a schema attribute value.
+// For simple strings like "string", returns the string itself.
+// For complex objects like {"type":"string","filterable":true}, returns "string".
+func ExtractBaseType(attrType any) string {
+	switch v := attrType.(type) {
+	case string:
+		return v
+	case map[string]any:
+		if t, ok := v["type"].(string); ok {
+			return t
+		}
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// ParseVectorDims extracts the dimension count from a vector type string like "[768]f32".
+func ParseVectorDims(vectorType string) int {
+	matches := VectorTypePattern.FindStringSubmatch(vectorType)
+	if matches == nil {
+		return 0
+	}
+	// Extract number between brackets
+	start := 1 // skip '['
+	end := strings.Index(vectorType, "]")
+	if end <= start {
+		return 0
+	}
+	var dims int
+	fmt.Sscanf(vectorType[start:end], "%d", &dims)
+	return dims
+}
+
+// annEnabled returns true if the ann value represents "enabled" (either bool true or a config object).
+func annEnabled(v any) bool {
+	switch a := v.(type) {
+	case bool:
+		return a
+	case map[string]any:
+		// Any non-empty object means ann is enabled
+		return len(a) > 0
+	}
+	return false
+}
+
+// computePropertyChanges compares two attribute maps and returns the changed properties.
+// attrName is used for special-case handling (e.g. "id").
+func computePropertyChanges(attrName string, oldMap, newMap map[string]any) []PropertyChange {
+	var changes []PropertyChange
+	// Collect all keys
+	allKeys := make(map[string]bool)
+	for k := range oldMap {
+		allKeys[k] = true
+	}
+	for k := range newMap {
+		allKeys[k] = true
+	}
+
+	sorted := make([]string, 0, len(allKeys))
+	for k := range allKeys {
+		sorted = append(sorted, k)
+	}
+	sort.Strings(sorted)
+
+	for _, k := range sorted {
+		if k == "type" {
+			continue // base type is shown separately
+		}
+
+		// The "id" attribute is always filterable regardless of what the API reports.
+		if attrName == "id" && k == "filterable" {
+			continue
+		}
+
+		// For "ann", compare by enabled/disabled rather than exact representation,
+		// since the API returns an object but writes accept a boolean.
+		if k == "ann" {
+			if annEnabled(oldMap[k]) != annEnabled(newMap[k]) {
+				oldVal, _ := json.Marshal(oldMap[k])
+				newVal, _ := json.Marshal(newMap[k])
+				changes = append(changes, PropertyChange{
+					Key:      k,
+					OldValue: string(oldVal),
+					NewValue: string(newVal),
+				})
+			}
+			continue
+		}
+
+		oldVal, _ := json.Marshal(oldMap[k])
+		newVal, _ := json.Marshal(newMap[k])
+		if string(oldVal) != string(newVal) {
+			changes = append(changes, PropertyChange{
+				Key:      k,
+				OldValue: string(oldVal),
+				NewValue: string(newVal),
+			})
+		}
+	}
+	return changes
+}
+
+// toMap normalizes an attribute type to a map for property comparison.
+func toMap(attrType any) map[string]any {
+	switch v := attrType.(type) {
+	case map[string]any:
+		return v
+	case string:
+		return map[string]any{"type": v}
+	default:
+		return map[string]any{"type": fmt.Sprintf("%v", v)}
+	}
 }
 
 // ComputeSchemaDiff computes the difference between current and new schemas.
 // currentSchema can be nil (namespace doesn't exist yet).
 func ComputeSchemaDiff(currentSchema, newSchema map[string]any) SchemaDiff {
 	diff := SchemaDiff{
-		Unchanged: make(map[string]string),
-		Additions: make(map[string]string),
-		Conflicts: make(map[string][2]string),
+		Unchanged:     make(map[string]string),
+		Additions:     make(map[string]string),
+		Modifications: make(map[string]AttrModification),
+		Conflicts:     make(map[string][2]string),
 	}
 
 	if currentSchema == nil {
@@ -203,7 +380,24 @@ func ComputeSchemaDiff(currentSchema, newSchema map[string]any) SchemaDiff {
 			diff.Unchanged[attr] = newTypeDisplay
 		} else {
 			oldTypeDisplay := SchemaTypeForDisplay(currentSchema[attr])
-			diff.Conflicts[attr] = [2]string{oldTypeDisplay, newTypeDisplay}
+			oldBase := ExtractBaseType(currentSchema[attr])
+			newBase := ExtractBaseType(newType)
+			if oldBase == newBase || oldBase == "unknown" || oldBase == "[]unknown" {
+				// Same base type, different properties — check for meaningful changes
+				changes := computePropertyChanges(attr, toMap(currentSchema[attr]), toMap(newType))
+				if len(changes) > 0 {
+					diff.Modifications[attr] = AttrModification{
+						BaseType: newBase,
+						Changes:  changes,
+					}
+				} else {
+					// All differences were suppressed (e.g. ann normalization)
+					diff.Unchanged[attr] = newTypeDisplay
+				}
+			} else {
+				// Different base type — conflict (blocked)
+				diff.Conflicts[attr] = [2]string{oldTypeDisplay, newTypeDisplay}
+			}
 		}
 	}
 
