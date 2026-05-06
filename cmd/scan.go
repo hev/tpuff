@@ -60,7 +60,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 			IncludeAttributes: turbopuffer.IncludeAttributesParam{StringArray: []string{field}},
 			TopK:              turbopuffer.Int(int64(pageSize)),
 			Consistency: turbopuffer.NamespaceQueryParamsConsistency{
-				Level: turbopuffer.NamespaceQueryParamsConsistencyLevelEventual,
+				Level: turbopuffer.NamespaceQueryParamsConsistencyLevelStrong,
 			},
 		}
 
