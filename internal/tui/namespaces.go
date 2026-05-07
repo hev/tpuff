@@ -11,14 +11,22 @@ import (
 	"github.com/hev/tpuff/internal/metadata"
 )
 
+const namespacesRefreshInterval = 30 * time.Second
+
 // Messages
 type namespacesLoadedMsg struct {
+	items []metadata.NamespaceWithMetadata
+}
+
+type namespacesRefreshedMsg struct {
 	items []metadata.NamespaceWithMetadata
 }
 
 type namespacesErrMsg struct {
 	err error
 }
+
+type namespacesTickMsg struct{}
 
 type namespacesModel struct {
 	items     []metadata.NamespaceWithMetadata
@@ -54,6 +62,34 @@ func (m namespacesModel) init(region string) tea.Cmd {
 			return ti.After(tj)
 		})
 		return namespacesLoadedMsg{items: items}
+	}
+}
+
+func namespacesTickCmd() tea.Cmd {
+	return tea.Tick(namespacesRefreshInterval, func(time.Time) tea.Msg {
+		return namespacesTickMsg{}
+	})
+}
+
+func (m namespacesModel) refresh(region string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		items := metadata.FetchNamespacesWithMetadata(ctx, false, region, false)
+		if items == nil {
+			return nil // silently ignore refresh errors
+		}
+		sort.Slice(items, func(i, j int) bool {
+			ti := time.Time{}
+			tj := time.Time{}
+			if items[i].Metadata != nil {
+				ti = items[i].Metadata.UpdatedAt
+			}
+			if items[j].Metadata != nil {
+				tj = items[j].Metadata.UpdatedAt
+			}
+			return ti.After(tj)
+		})
+		return namespacesRefreshedMsg{items: items}
 	}
 }
 
@@ -98,7 +134,16 @@ func (m namespacesModel) update(msg tea.Msg) (namespacesModel, tea.Cmd) {
 	case namespacesLoadedMsg:
 		m.items = msg.items
 		m.loading = false
-		return m, nil
+		m.applyFilter()
+		return m, namespacesTickCmd()
+	case namespacesRefreshedMsg:
+		m.items = msg.items
+		m.applyFilter()
+		visible := m.visibleIndices()
+		if m.cursor >= len(visible) {
+			m.cursor = max(0, len(visible)-1)
+		}
+		return m, namespacesTickCmd()
 	case namespacesErrMsg:
 		m.err = msg.err
 		m.loading = false

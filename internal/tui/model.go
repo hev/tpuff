@@ -139,6 +139,11 @@ func (m Model) updateEnvs(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateNamespaces(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case namespacesTickMsg:
+		if !m.namespaces.loading {
+			return m, m.namespaces.refresh(m.region)
+		}
+		return m, namespacesTickCmd()
 	case tea.KeyMsg:
 		switch {
 		case msg.String() == "q" && !m.namespaces.filtering:
