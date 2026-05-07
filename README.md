@@ -1,6 +1,6 @@
 # tpuff
 
-A fast Go CLI and interactive TUI for [turbopuffer](https://turbopuffer.com).
+An unofficial Go CLI and TUI for [turbopuffer](https://turbopuffer.com).
 
 ## Install
 
